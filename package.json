@@ -1,0 +1,23 @@
+{
+  "name": "institut-beaute",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Application Next.js pour institut de beauté : vitrine animée, réservation, boutique, sur-mesure, ateliers, formations vidéo et administration.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "demo": "node --disable-warning=ExperimentalWarning scripts/demo.js",
+    "catalogue": "node --disable-warning=ExperimentalWarning scripts/catalogue-sem.js",
+    "reset": "node scripts/reset.js"
+  },
+  "dependencies": {
+    "next": "16.4.5",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>%%NAME%% — %%TAGLINE%%</title>
+  <meta name="description" content="%%DESC%%">
+  <meta name="theme-color" content="#2b1520">
+  <meta property="og:title" content="%%NAME%% — %%TAGLINE%%">
+  <meta property="og:description" content="%%DESC%%">
+  <meta property="og:type" content="website">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/assets/img/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/assets/img/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Jost:wght@300;400;500;600&display=swap">
+  <link rel="stylesheet" href="/assets/css/main.css">
+  <link rel="stylesheet" href="/assets/css/pages.css">
+  <script type="module" src="/assets/js/app.js"></script>
+</head>
+<body class="is-loading">
+  <div id="preloader" aria-hidden="true">
+    <div class="pl-inner">
+      <svg class="pl-mark" viewBox="0 0 120 120"><circle cx="60" cy="60" r="54" /><path d="M60 22c10 16 22 26 22 42a22 22 0 0 1-44 0c0-16 12-26 22-42z" /></svg>
+      <div class="pl-name">%%NAME%%</div>
+      <div class="pl-bar"><span></span></div>
+    </div>
+  </div>
+  <div id="curtain" aria-hidden="true"><span></span></div>
+  <div class="cursor-dot" aria-hidden="true"></div>
+  <div class="cursor-ring" aria-hidden="true"><span></span></div>
+  <div id="scroll-progress" aria-hidden="true"></div>
+
+  <a class="skip" href="#app">Aller au contenu</a>
+  <header id="header"></header>
+  <main id="app" tabindex="-1"></main>
+  <footer id="footer"></footer>
+  <div id="assistant"></div>
+  <div id="toasts" aria-live="polite"></div>
+
+  <noscript><p style="padding:2rem;text-align:center">Ce site nécessite JavaScript. Appelez-nous directement au 01 63 40 35 39 ou au 01 97 04 52 83.</p></noscript>
+</body>
+</html>

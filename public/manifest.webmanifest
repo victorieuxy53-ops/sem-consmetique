@@ -1,0 +1,19 @@
+{
+  "name": "SEM Cosmétique — Soins & beauté au naturel",
+  "short_name": "SEM Cosmétique",
+  "description": "Commandez vos soins SEM Cosmétique, réservez à l’institut et suivez vos formations beauté.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fffafc",
+  "theme_color": "#1b2a5c",
+  "icons": [
+    { "src": "/assets/img/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Boutique", "url": "/boutique" },
+    { "name": "Prendre rendez-vous", "url": "/reservation" },
+    { "name": "Mes formations", "url": "/compte?tab=for" }
+  ]
+}
