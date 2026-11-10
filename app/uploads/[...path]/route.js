@@ -7,7 +7,7 @@ const MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
 /** Photos et vidéos d'ambiance envoyées depuis l'admin (dossier plat, noms aléatoires, lecture par plages). */
 async function serve(req, { params }) {
   const name = path.basename((await params).path.join('/'));
-  const res = streamFile(req, path.join(UPLOAD_DIR, name), MIME[path.extname(name).toLowerCase()] || 'application/octet-stream');
+  const res = streamFile(req, path.join(/* turbopackIgnore: true */ UPLOAD_DIR, name), MIME[path.extname(name).toLowerCase()] || 'application/octet-stream');
   if (res.ok) res.headers.set('Cache-Control', 'public, max-age=2592000, immutable');
   return res;
 }

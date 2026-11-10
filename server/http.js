@@ -5,8 +5,10 @@
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
 
-const TRUST_PROXY = process.env.TRUST_PROXY === '1';
-const SECURE_COOKIES = process.env.SECURE_COOKIES === '1';
+// Vercel est toujours en HTTPS derrière un proxy : activé d'office (forçable avec TRUST_PROXY / SECURE_COOKIES = 0 ou 1).
+const onOff = (v, def) => (v === '1' ? true : v === '0' ? false : def);
+const TRUST_PROXY = onOff(process.env.TRUST_PROXY, !!process.env.VERCEL);
+const SECURE_COOKIES = onOff(process.env.SECURE_COOKIES, !!process.env.VERCEL);
 const G = (globalThis.__institutHttp ||= { buckets: new Map() });
 
 export class HttpError extends Error {
@@ -24,7 +26,6 @@ function add(method, pattern, handler) {
 export const get = (p, h) => add('GET', p, h);
 export const post = (p, h) => add('POST', p, h);
 export const put = (p, h) => add('PUT', p, h);
-export const patch = (p, h) => add('PATCH', p, h);
 export const del = (p, h) => add('DELETE', p, h);
 
 function match(method, pathname) {
@@ -129,9 +130,9 @@ export async function call(path, cookies = {}) {
 /* ------------------------------------------------- streaming (Range) */
 export function streamFile(req, file, type) {
   let size;
-  try { size = fs.statSync(file).size; } catch { return json(404, { error: 'Fichier introuvable' }); }
+  try { size = fs.statSync(/* turbopackIgnore: true */ file).size; } catch { return json(404, { error: 'Fichier introuvable' }); }
   const headers = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600' };
-  const body = (o) => (req.method === 'HEAD' ? null : Readable.toWeb(fs.createReadStream(file, o)));
+  const body = (o) => (req.method === 'HEAD' ? null : Readable.toWeb(fs.createReadStream(/* turbopackIgnore: true */ file, o)));
   const range = req.headers.get('range');
   if (!range) return new Response(body(), { headers: { ...headers, 'Content-Length': String(size) } });
   const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());

@@ -3,20 +3,41 @@
  * Connexion unique par processus (globalThis) : Next.js peut charger ce module plusieurs fois.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
-export const DATA_DIR = path.resolve(/* turbopackIgnore: true */ process.env.DATA_DIR || 'data'); // données d'exécution, hors bundle
-export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
-export const VIDEO_DIR = path.join(DATA_DIR, 'videos');
+/**
+ * Dossier des données d'exécution (base, photos, vidéos), hors bundle :
+ * - `DATA_DIR` si défini (serveur VPS, disque persistant) ;
+ * - sur Vercel, `/tmp` : le dossier du projet y est en lecture seule (sinon erreur 500 sur toutes les pages) ;
+ * - sinon `./data`, avec repli sur le dossier temporaire si l'hébergeur interdit l'écriture.
+ * Dans le dossier temporaire, les données sont ÉPHÉMÈRES (recréées à chaque démarrage à froid) : voir README.
+ */
+function dataDir() {
+  const tmp = path.join(/* turbopackIgnore: true */ os.tmpdir(), 'sem-cosmetique-data');
+  const wanted = process.env.DATA_DIR ? path.resolve(/* turbopackIgnore: true */ process.env.DATA_DIR) : process.env.VERCEL ? tmp : path.resolve(/* turbopackIgnore: true */ 'data');
+  for (const dir of wanted === tmp ? [tmp] : [wanted, tmp]) {
+    try {
+      for (const d of [dir, path.join(/* turbopackIgnore: true */ dir, 'uploads'), path.join(/* turbopackIgnore: true */ dir, 'videos')]) fs.mkdirSync(/* turbopackIgnore: true */ d, { recursive: true });
+      fs.accessSync(/* turbopackIgnore: true */ dir, fs.constants.W_OK);
+      if (dir !== wanted) console.warn(`[données] « ${wanted} » n'est pas accessible en écriture : utilisation de « ${dir} » (données éphémères).`);
+      return dir;
+    } catch (e) { if (dir === tmp) throw e; }
+  }
+}
 const G = (globalThis.__institutDb ||= { stmts: new Map(), depth: 0, settings: null });
+export const DATA_DIR = (G.dir ||= dataDir());
+export const UPLOAD_DIR = path.join(/* turbopackIgnore: true */ DATA_DIR, 'uploads');
+export const VIDEO_DIR = path.join(/* turbopackIgnore: true */ DATA_DIR, 'videos');
+/** Vrai quand les données vivent dans le dossier temporaire (ex. Vercel) : perdues au prochain démarrage à froid. */
+export const EPHEMERAL = DATA_DIR.startsWith(os.tmpdir());
 
 if (!G.db) {
-  for (const d of [DATA_DIR, UPLOAD_DIR, VIDEO_DIR]) fs.mkdirSync(d, { recursive: true });
   const warn = process.emitWarning; // masque l'avertissement « SQLite expérimental »
   process.emitWarning = (w, ...a) => (String(w?.message ?? w).includes('SQLite') ? undefined : warn.call(process, w, ...a));
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
   process.emitWarning = warn;
-  G.db = new DatabaseSync(path.join(DATA_DIR, 'institut.sqlite'));
+  G.db = new DatabaseSync(path.join(/* turbopackIgnore: true */ DATA_DIR, 'institut.sqlite'));
   G.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 4000;');
   G.db.exec(`
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);

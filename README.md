@@ -137,7 +137,36 @@ Cochez « Aperçu gratuit » sur la première leçon pour donner envie d'acheter
 
 ## 6. Mettre le site en ligne
 
-Recommandé : un petit serveur VPS (Ubuntu) avec un nom de domaine.
+Deux possibilités, selon le besoin :
+
+| | Vercel | Serveur VPS (ou Railway / Render avec disque) |
+|---|---|---|
+| Site public, boutique, demandes → WhatsApp | ✅ | ✅ |
+| Modifications faites dans `/admin` (prix, produits, photos, paramètres) | ⚠️ **perdues** au redémarrage | ✅ conservées |
+| Commandes, rendez-vous, messages enregistrés dans l’admin | ⚠️ **perdus** au redémarrage | ✅ conservés |
+| Coût / mise en route | gratuit, en 2 minutes | quelques €/mois, plus technique |
+
+### 6.1 Vercel (vitrine + WhatsApp)
+
+Sur Vercel, le dossier du projet est en **lecture seule** : la base SQLite est créée dans `/tmp`,
+**recréée à chaque démarrage à froid** (catalogue SEM, textes et réglages par défaut du code).
+Toutes les demandes des clientes arrivent sur WhatsApp, donc le site reste pleinement utilisable ;
+en revanche, les changements de contenu se font **dans le code** (`server/catalogue-sem.js`,
+`server/db.js` › `DEFAULT_SETTINGS`) puis par un nouveau déploiement. Un bandeau le rappelle dans l’admin.
+
+1. Poussez le dépôt sur GitHub, puis *Vercel › Add New › Project* et importez-le
+   (framework **Next.js** détecté, commandes par défaut : `npm install`, `next build`).
+2. *Settings › Environment Variables* : `ADMIN_EMAIL` et `ADMIN_PASSWORD` (sans elles, `/admin` est
+   verrouillé par un mot de passe aléatoire), et éventuellement `SITE_URL` (voir `.env.example`).
+3. *Settings › General › Node.js Version* : **22.x** ou plus récent (module `node:sqlite` requis).
+4. Déployez. `TRUST_PROXY` et `SECURE_COOKIES` sont activés automatiquement sur Vercel.
+
+> Pour un back-office permanent sur Vercel, il faudrait remplacer SQLite par une base hébergée
+> (Turso, Vercel Postgres…) et les envois de photos par Vercel Blob : c’est une évolution à part entière.
+
+### 6.2 Serveur VPS (données permanentes)
+
+Recommandé pour utiliser pleinement l’admin : un petit serveur VPS (Ubuntu) avec un nom de domaine.
 
 ```bash
 # Sur le serveur
@@ -168,10 +197,13 @@ Variables d'environnement :
 | Variable | Rôle |
 |---|---|
 | `PORT` | Port d'écoute (défaut 3000) |
-| `DATA_DIR` | Dossier des données (défaut `./data`) |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Compte admin créé au premier démarrage |
-| `TRUST_PROXY=1` | À activer derrière Nginx (adresse IP réelle des visiteurs, utilisée par la limitation des tentatives) |
-| `SECURE_COOKIES=1` | À activer en HTTPS |
+| `DATA_DIR` | Dossier des données (défaut `./data` ; `/tmp` sur Vercel ; repli automatique sur le dossier temporaire s'il n'est pas accessible en écriture) |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Compte admin créé au premier démarrage (indispensables en ligne) |
+| `SITE_URL` | Adresse publique du site, pour les aperçus de partage (détectée seule sur Vercel) |
+| `TRUST_PROXY=1` | À activer derrière Nginx (adresse IP réelle des visiteurs, utilisée par la limitation des tentatives). Automatique sur Vercel |
+| `SECURE_COOKIES=1` | À activer en HTTPS. Automatique sur Vercel |
+
+Modèle complet et commenté : **`.env.example`**.
 
 ### Sauvegardes
 Toutes les données sont dans le dossier **`data/`** (base `institut.sqlite`, photos `uploads/`,
@@ -207,8 +239,10 @@ lib/
   fx.js                 Moteur d'animation (révélations, 3D, parallaxe, particules, confettis)
   server.js             Accès aux données depuis les Server Components
 server/                 Logique métier (inchangée) : SQLite, auth, validation, créneaux, routes API
-styles/                 main.css (design system), pages.css, admin.css
+styles/                 main.css (design system), pages.css, sem.css (sections de marque), admin.css
 instrumentation.js      Crée la base et le catalogue au démarrage
-scripts/                demo.js, reset.js
-data/                   Créé automatiquement — À SAUVEGARDER
+scripts/                demo.js, reset.js, catalogue-sem.js
+data/                   Créé automatiquement — À SAUVEGARDER (non versionné)
+.env.example            Variables d'environnement documentées
+.vercelignore           Fichiers exclus d'un déploiement « vercel » en ligne de commande
 ```

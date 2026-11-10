@@ -15,6 +15,8 @@ const CSP = [
 /** @type {import('next').NextConfig} */
 export default {
   poweredByHeader: false,
+  // NB : les accès fichiers dynamiques du serveur (base, photos, vidéos) portent l'indication
+  // /* turbopackIgnore: true */ : sans elle, tout le dossier du projet serait embarqué dans chaque fonction Vercel.
   async headers() {
     return [{
       source: '/:path*',

@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { api, address, cap, CATS, copy, cx, DAYS, fdate, fdur, fshort, hoursLabel, localNow, money, num, openModal, openStatus, PCATS, phones, telHref, todayStr, toast, waMain, WEEK, whatsappRelay } from '@/lib/core';
 import {
-  addToCart, Avatar, BgVideo, Btn, BulkNote, CallbackForm, DarkHeader, Count, Cover, CourseCard, Emph, Empty, EventCard, Icon, Input, LogoMark, Md, OpenDot, PageHero, Paras, PostCard,
+  addToCart, Avatar, BgVideo, Btn, BulkNote, CallbackForm, DarkHeader, Count, Cover, CourseCard, Empty, EventCard, Icon, Input, LogoMark, Md, OpenDot, PageHero, Paras, PostCard,
   Price, ProductArt, ProductCard, SecHead, Seg, Select, ServiceCard, Slideshow, Split, Stars, pop, reviewModal, useApp, useSubmit, Area,
 } from '../ui';
 

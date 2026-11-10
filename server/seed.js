@@ -1,6 +1,7 @@
 /**
  * Données initiales : catalogue de démarrage entièrement modifiable depuis l'espace admin.
  */
+import { randomBytes } from 'node:crypto';
 import * as db from './db.js';
 import { hashPassword } from './auth.js';
 import { slugify } from './util.js';
@@ -158,13 +159,16 @@ const REVIEWS = [
 async function seedIfEmpty() {
   if (db.get('SELECT COUNT(*) n FROM users').n > 0) return false;
   const email = (process.env.ADMIN_EMAIL || 'admin@institut.local').toLowerCase();
-  const password = process.env.ADMIN_PASSWORD || 'Admin@2026';
+  // Données éphémères (Vercel) : la base est recréée à chaque démarrage à froid. Sans ADMIN_PASSWORD, le mot de passe
+  // par défaut (publié dans le README) rouvrirait l'admin à chaque fois : on le remplace par un mot de passe aléatoire.
+  const locked = !process.env.ADMIN_PASSWORD && db.EPHEMERAL;
+  const password = process.env.ADMIN_PASSWORD || (locked ? randomBytes(24).toString('base64url') : 'Admin@2026');
   const hash = await hashPassword(password);
   const t = db.today();
 
   db.tx(() => {
     db.run("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'admin')", 'Direction', email, hash);
-    if (!process.env.ADMIN_PASSWORD) db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_default_pw', 'true')");
+    if (!process.env.ADMIN_PASSWORD && !locked) db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_default_pw', 'true')");
 
     SERVICES.forEach(([cat, name, short, desc, price, dur, tags, feat], i) =>
       db.run(`INSERT INTO services (slug, category, name, short, description, price, duration, tags, featured, sort) VALUES (?,?,?,?,?,?,?,?,?,?)`,
@@ -203,8 +207,11 @@ async function seedIfEmpty() {
   });
 
   console.log('\n  Base de données initialisée.');
-  console.log(`  Compte administrateur : ${email}  /  ${process.env.ADMIN_PASSWORD ? '(mot de passe défini par ADMIN_PASSWORD)' : password}`);
-  console.log('  Pensez à changer ce mot de passe dans Admin › Paramètres.\n');
+  if (locked) console.warn('  Espace admin verrouillé : définissez ADMIN_EMAIL et ADMIN_PASSWORD dans les variables d’environnement de l’hébergeur.\n');
+  else {
+    console.log(`  Compte administrateur : ${email}  /  ${process.env.ADMIN_PASSWORD ? '(mot de passe défini par ADMIN_PASSWORD)' : password}`);
+    console.log('  Pensez à changer ce mot de passe dans Admin › Paramètres.\n');
+  }
   return true;
 }
 

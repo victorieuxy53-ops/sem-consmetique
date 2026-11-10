@@ -257,6 +257,7 @@ get('/api/admin/stats', (ctx) => {
                     FROM events e WHERE e.date >= ? AND e.active = 1 ORDER BY e.date LIMIT 4`, t),
     recent_orders: db.all('SELECT id, ref, name, total, status, created_at FROM orders ORDER BY id DESC LIMIT 5'),
     default_password: !!db.get("SELECT 1 FROM settings WHERE key = 'admin_default_pw'"),
+    ephemeral: db.EPHEMERAL,
   };
 });
 
@@ -318,8 +319,8 @@ post('/api/admin/upload', async (ctx) => {
   const pub = isImg || ctx.query.public === '1'; // vidéo d'ambiance publique (accueil) ou vidéo de leçon protégée
   const limit = isImg ? 12 * 1024 * 1024 : pub ? 50 * 1024 * 1024 : 4 * 1024 * 1024 * 1024;
   const name = `${Date.now().toString(36)}-${crypto.randomBytes(6).toString('hex')}${ext === '.jpeg' ? '.jpg' : ext}`;
-  const dest = path.join(pub ? db.UPLOAD_DIR : db.VIDEO_DIR, name);
-  const out = fs.createWriteStream(dest);
+  const dest = path.join(/* turbopackIgnore: true */ pub ? db.UPLOAD_DIR : db.VIDEO_DIR, name);
+  const out = fs.createWriteStream(/* turbopackIgnore: true */ dest);
   let size = 0, head = null;
   try {
     for await (const chunk of ctx.req.body || []) {

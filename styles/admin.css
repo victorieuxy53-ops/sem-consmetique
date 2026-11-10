@@ -3,8 +3,6 @@
    ===================================================================== */
 .admin-body { background: #f8f3f7; }
 .admin-body::before { display: none; }
-.adm-loading { position: fixed; inset: 0; display: grid; place-items: center; }
-.adm-loading span { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--sand-2); border-top-color: var(--tone-5); animation: spin .8s linear infinite; }
 
 /* ------------------------------------------------------------- connexion */
 .alog { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; }

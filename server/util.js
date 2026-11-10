@@ -176,7 +176,7 @@ function saveDataImage(dataUrl, maxBytes = 5 * 1024 * 1024) {
   const ext = imageExt(buf);
   if (!ext) throw bad('Format d’image non pris en charge (JPG, PNG, WEBP).');
   const name = `${Date.now().toString(36)}-${crypto.randomBytes(5).toString('hex')}${ext}`;
-  fs.writeFileSync(path.join(db.UPLOAD_DIR, name), buf);
+  fs.writeFileSync(path.join(/* turbopackIgnore: true */ db.UPLOAD_DIR, name), buf);
   return '/uploads/' + name;
 }
 

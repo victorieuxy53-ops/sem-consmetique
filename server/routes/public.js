@@ -229,7 +229,7 @@ const VIDEO_MIME = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/w
 get('/media/lesson/:id', (ctx) => {
   const l = lessonAccess(ctx, ctx.params.id);
   if (l.video_type !== 'file' || !l.video_src) fail(404, 'Vidéo indisponible');
-  const file = path.join(db.VIDEO_DIR, path.basename(l.video_src));
+  const file = path.join(/* turbopackIgnore: true */ db.VIDEO_DIR, path.basename(l.video_src));
   if (!fs.existsSync(file)) fail(404, 'Vidéo introuvable sur le serveur');
   return streamFile(ctx.req, file, VIDEO_MIME[path.extname(file).toLowerCase()] || 'application/octet-stream');
 });

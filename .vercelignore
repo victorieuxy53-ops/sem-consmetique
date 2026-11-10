@@ -1,0 +1,11 @@
+# Fichiers à ne jamais envoyer lors d'un déploiement « vercel » en ligne de commande
+# (un déploiement depuis GitHub n'envoie déjà que les fichiers suivis par Git).
+data/
+*.sqlite
+*.sqlite-*
+.next/
+node_modules/
+.env
+.env.*
+!.env.example
+sem-consmetique/

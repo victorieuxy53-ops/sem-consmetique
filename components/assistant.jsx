@@ -1,7 +1,7 @@
 'use client';
 /* Assistante beauté : actions rapides, réponses automatiques, appel, WhatsApp, demande de rappel. */
 import { useEffect, useRef, useState } from 'react';
-import { api, CATS, cx, DAYS, WEEK, address, hoursLabel, money, openStatus, phones, sleep, telHref, toast, waMain, whatsappRelay } from '@/lib/core';
+import { api, CATS, cx, DAYS, WEEK, address, hoursLabel, money, openStatus, phones, sleep, telHref, waMain, whatsappRelay } from '@/lib/core';
 import { Icon, LogoMark, OpenDot, useApp } from './ui';
 
 const CHIPS = [

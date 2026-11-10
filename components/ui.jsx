@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
   api, cap, cart, cartStore, CATS, closeModal, copy, cx, discount, fdate, fdur, formData, fshort, hasBulk, initials, lockScroll, md, modals,
-  money, openModal, PCATS, pct, savedContact, saveContact, setSettings, settings, STATUS, toast, toasts, useStore, waMain, whatsappRelay,
+  money, openModal, PCATS, pct, savedContact, saveContact, setSettings, settings, STATUS, toast, toasts, useStore, whatsappRelay,
 } from '@/lib/core';
 import { flyToCart, reduce } from '@/lib/fx';
 
@@ -207,7 +207,6 @@ export function Split({ as: T = 'h2', text, className, ...rest }) {
     </T>
   );
 }
-export const Emph = ({ text }) => String(text ?? '').split(/\*(.+?)\*/).map((p, k) => (k % 2 ? <em key={k}>{p}</em> : p));
 export const Paras = ({ text }) => String(text || '').split(/\n\s*\n/).map((p, i) => <p key={i}>{p.trim().split('\n').map((l, j) => <Fragment key={j}>{j > 0 && <br />}{l}</Fragment>)}</p>);
 export const Md = ({ src, className = 'prose' }) => <div className={className} dangerouslySetInnerHTML={{ __html: md(src || '') }} />;
 
