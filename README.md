@@ -7,7 +7,8 @@ soins SEM (huile Oil Secret, lait Lucioles, crème Ciole, savon anti-transpirati
 ### Identité visuelle
 - **Couleurs** : bleu nuit `#1b2a5c` (surfaces sombres, boutons) et rose framboise `#d6336f` (accents),
   définies en variables dans `styles/main.css` (`:root`). Sections de marque : `styles/sem.css`.
-- **Polices** : Cormorant Garamond (titres), Jost (texte), Great Vibes (slogan et signature manuscrits).
+- **Polices** : Cormorant Garamond (titres), Jost (texte), Great Vibes (slogan et signature manuscrits),
+  hébergées dans `styles/fonts/` (licence OFL) : le build ne dépend pas de Google Fonts.
 - **Logo** : composant `LogoMark` dans `components/ui.jsx` (feuilles roses + profil féminin) et `public/assets/img/icon.svg`.
 - **Photos** : `public/assets/img/sem/` (optimisées, ~800 Ko au total).
 - **Catalogue SEM** : `server/catalogue-sem.js`. Sur une base existante : `npm run catalogue`

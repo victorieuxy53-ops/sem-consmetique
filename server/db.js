@@ -32,14 +32,26 @@ export const VIDEO_DIR = path.join(/* turbopackIgnore: true */ DATA_DIR, 'videos
 /** Vrai quand les données vivent dans le dossier temporaire (ex. Vercel) : perdues au prochain démarrage à froid. */
 export const EPHEMERAL = DATA_DIR.startsWith(os.tmpdir());
 
-if (!G.db) {
+/** Réessaie une opération quand un autre processus tient le verrou (SQLite refuse parfois sans attendre
+    pour éviter un interblocage, malgré busy_timeout). */
+const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+function retryBusy(fn) {
+  for (let i = 0; ; i++) {
+    try { return fn(); } catch (e) { if (i >= 50 || !/locked|busy/i.test(e.message)) throw e; pause(40 + Math.random() * 120); }
+  }
+}
+
+/** Ouvre la base (une seule fois par processus) et crée les tables si besoin. Appelée au premier usage, jamais à
+    l'import : `next build` charge ce module dans plusieurs workers en parallèle sans avoir besoin de la base. */
+function open() {
   const warn = process.emitWarning; // masque l'avertissement « SQLite expérimental »
   process.emitWarning = (w, ...a) => (String(w?.message ?? w).includes('SQLite') ? undefined : warn.call(process, w, ...a));
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
   process.emitWarning = warn;
-  G.db = new DatabaseSync(path.join(/* turbopackIgnore: true */ DATA_DIR, 'institut.sqlite'));
-  G.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 4000;');
-  G.db.exec(`
+  const c = new DatabaseSync(path.join(/* turbopackIgnore: true */ DATA_DIR, 'institut.sqlite'));
+  c.exec('PRAGMA busy_timeout = 10000; PRAGMA foreign_keys = ON;');
+  retryBusy(() => c.exec('PRAGMA journal_mode = WAL;'));
+  retryBusy(() => c.exec(`
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 
 CREATE TABLE IF NOT EXISTS users (
@@ -136,22 +148,33 @@ CREATE TABLE IF NOT EXISTS newsletter (email TEXT PRIMARY KEY COLLATE NOCASE, cr
 CREATE TABLE IF NOT EXISTS gallery (
   id INTEGER PRIMARY KEY, title TEXT, category TEXT, image TEXT, after_image TEXT, sort INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')));
-`);
+`));
+  G.db = c;
 }
-// Migrations douces : colonnes ajoutées après la création initiale de la base
-// (hors du bloc ci-dessus pour s'appliquer aussi à un serveur déjà lancé).
-if (G.schema !== 2) {
-  const cols = new Set(G.db.prepare('PRAGMA table_info(products)').all().map((c) => c.name));
-  if (!cols.has('bulk_qty')) G.db.exec('ALTER TABLE products ADD COLUMN bulk_qty INTEGER');     // prix dégressif : dès N articles…
-  if (!cols.has('bulk_price')) G.db.exec('ALTER TABLE products ADD COLUMN bulk_price INTEGER'); // …ce prix à l'unité
+
+/** Migrations douces : colonnes ajoutées après la création initiale de la base (aussi sur un serveur déjà lancé). */
+function migrate() {
+  const addColumn = (col, type) => {
+    if (G.db.prepare('PRAGMA table_info(products)').all().some((c) => c.name === col)) return;
+    try { retryBusy(() => G.db.exec(`ALTER TABLE products ADD COLUMN ${col} ${type}`)); }
+    catch (e) { if (!/duplicate column/i.test(e.message)) throw e; } // ajoutée entre-temps par un autre processus
+  };
+  addColumn('bulk_qty', 'INTEGER');   // prix dégressif : dès N articles…
+  addColumn('bulk_price', 'INTEGER'); // …ce prix à l'unité
   G.schema = 2;
 }
-export const db = G.db;
+
+/** Connexion SQLite (ouverte et migrée au premier appel). */
+export function conn() {
+  if (!G.db) open();
+  if (G.schema !== 2) migrate();
+  return G.db;
+}
 
 /* ------------------------------------------------------------ helpers */
 function stmt(sql) {
   let s = G.stmts.get(sql);
-  if (!s) { s = db.prepare(sql); G.stmts.set(sql, s); }
+  if (!s) { s = conn().prepare(sql); G.stmts.set(sql, s); }
   return s;
 }
 const norm = (v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v);
@@ -161,10 +184,11 @@ export const run = (sql, ...p) => stmt(sql).run(...p.map(norm));
 
 export function tx(fn) {
   if (G.depth) return fn();
+  const c = conn();
   G.depth++;
-  db.exec('BEGIN IMMEDIATE');
-  try { const r = fn(); db.exec('COMMIT'); return r; }
-  catch (e) { db.exec('ROLLBACK'); throw e; }
+  c.exec('BEGIN IMMEDIATE');
+  try { const r = fn(); c.exec('COMMIT'); return r; }
+  catch (e) { c.exec('ROLLBACK'); throw e; }
   finally { G.depth--; }
 }
 
