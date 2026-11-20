@@ -500,7 +500,7 @@ export function AuthForms({ reason, tab: t0 = 'login', onSuccess }) {
       {reason && <p className="auth__reason"><Icon n="lock" /> {reason}</p>}
       <div className="seg"><button type="button" data-t="login" onClick={() => setTab('login')}>Connexion</button><button type="button" data-t="register" onClick={() => setTab('register')}>Créer un compte</button><span className="seg__ink" /></div>
       <form className="auth__form" data-form="login" onSubmit={login}>
-        <Input label="E-mail" name="email" type="email" required autoComplete="email" />
+        <Input label="E-mail ou téléphone" name="login" type="text" required autoComplete="username" autoCapitalize="none" spellCheck={false} />
         <Input label="Mot de passe" name="password" type="password" required autoComplete="current-password" />
         <Btn busy={b1} className="btn btn-primary btn-block">Se connecter <Icon n="arrow" /></Btn>
         <p className="muted small center">Mot de passe oublié ? Contactez-nous, nous le réinitialisons pour vous.</p>

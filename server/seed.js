@@ -1,7 +1,7 @@
 /**
  * Données initiales : catalogue de démarrage entièrement modifiable depuis l'espace admin.
  */
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import * as db from './db.js';
 import { hashPassword } from './auth.js';
 import { slugify } from './util.js';
@@ -156,35 +156,39 @@ const REVIEWS = [
   ['Sènami T.', 5, 'Diagnostic de peau très complet, je suis repartie avec une routine écrite. Ma peau grasse est enfin équilibrée.', 'Diagnostic de peau'],
 ];
 
+/** Téléphone de connexion de l'administratrice : ADMIN_PHONE, sinon le numéro WhatsApp principal (celui d'Ella). */
+const adminPhone = () => process.env.ADMIN_PHONE || db.DEFAULT_SETTINGS.whatsapp;
+
 async function seedIfEmpty() {
-  if (db.get('SELECT COUNT(*) n FROM users').n > 0) return false;
+  if ((await db.get('SELECT COUNT(*) n FROM users')).n > 0) return false;
   const email = (process.env.ADMIN_EMAIL || 'admin@institut.local').toLowerCase();
-  // Données éphémères (Vercel) : la base est recréée à chaque démarrage à froid. Sans ADMIN_PASSWORD, le mot de passe
-  // par défaut (publié dans le README) rouvrirait l'admin à chaque fois : on le remplace par un mot de passe aléatoire.
-  const locked = !process.env.ADMIN_PASSWORD && db.EPHEMERAL;
+  // En ligne (base éphémère, base Turso ou production) sans ADMIN_PASSWORD : le mot de passe par défaut (publié dans le
+  // README) ouvrirait l'admin à tout le monde. On pose un mot de passe aléatoire : l'admin reste verrouillé jusqu'à ce
+  // qu'ADMIN_PASSWORD soit défini (il est alors appliqué au démarrage suivant, voir syncAdminFromEnv).
+  const locked = !process.env.ADMIN_PASSWORD && (db.EPHEMERAL || db.REMOTE || process.env.NODE_ENV === 'production');
   const password = process.env.ADMIN_PASSWORD || (locked ? randomBytes(24).toString('base64url') : 'Admin@2026');
   const hash = await hashPassword(password);
   const t = db.today();
 
-  db.tx(() => {
-    db.run("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'admin')", 'Direction', email, hash);
-    if (!process.env.ADMIN_PASSWORD && !locked) db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_default_pw', 'true')");
+  await db.tx(async () => {
+    await db.run("INSERT INTO users (name, email, phone, password, role) VALUES (?, ?, ?, ?, 'admin')", 'Ella Sodonon', email, adminPhone(), hash);
+    if (!process.env.ADMIN_PASSWORD && !locked) await db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_default_pw', 'true')");
 
-    SERVICES.forEach(([cat, name, short, desc, price, dur, tags, feat], i) =>
-      db.run(`INSERT INTO services (slug, category, name, short, description, price, duration, tags, featured, sort) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-        slugify(name), cat, name, short, desc, price, dur, tags, feat, i));
+    for (const [i, [cat, name, short, desc, price, dur, tags, feat]] of SERVICES.entries())
+      await db.run(`INSERT INTO services (slug, category, name, short, description, price, duration, tags, featured, sort) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        slugify(name), cat, name, short, desc, price, dur, tags, feat, i);
 
     for (const p of SEM_PRODUCTS)
-      db.run(`INSERT INTO products (slug, category, name, brand, short, description, usage, price, compare_price, bulk_qty, bulk_price, stock, image, art, color, tags, featured)
+      await db.run(`INSERT INTO products (slug, category, name, brand, short, description, usage, price, compare_price, bulk_qty, bulk_price, stock, image, art, color, tags, featured)
               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, slugify(p.name), p.category, p.name, p.brand, p.short, p.description, p.usage, p.price, p.compare_price,
         p.bulk_qty, p.bulk_price, p.stock, p.image, p.art, p.color, p.tags, p.featured);
-    for (const g of SEM_GALLERY) db.run('INSERT INTO gallery (title, category, image, sort) VALUES (?,?,?,?)', g.title, g.category, g.image, g.sort);
+    for (const g of SEM_GALLERY) await db.run('INSERT INTO gallery (title, category, image, sort) VALUES (?,?,?,?)', g.title, g.category, g.image, g.sort);
 
     for (const c of COURSES) {
-      const r = db.run(`INSERT INTO courses (slug, title, subtitle, description, level, price, compare_price, color, instructor, duration_label, what_you_learn, featured)
+      const r = await db.run(`INSERT INTO courses (slug, title, subtitle, description, level, price, compare_price, color, instructor, duration_label, what_you_learn, featured)
                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, slugify(c.title), c.title, c.subtitle, c.description, c.level, c.price, c.compare, c.color, 'L’équipe SEM Cosmétique', c.duration, c.learn, c.featured);
-      c.lessons.forEach(([title, dur, prev], i) =>
-        db.run('INSERT INTO lessons (course_id, title, duration, is_preview, sort) VALUES (?,?,?,?,?)', r.lastInsertRowid, title, dur, prev, i));
+      for (const [i, [title, dur, prev]] of c.lessons.entries())
+        await db.run('INSERT INTO lessons (course_id, title, duration, is_preview, sort) VALUES (?,?,?,?,?)', r.lastInsertRowid, title, dur, prev, i);
     }
 
     const EVENTS = [
@@ -193,26 +197,52 @@ async function seedIfEmpty() {
       ['Journée dermo-conseil offerte', 'Venez faire analyser votre peau gratuitement (15 min) et repartez avec des conseils personnalisés. Inscription conseillée.', 20, '09:00', '17:00', 0, 30, '#c08a3e'],
     ];
     for (const [title, desc, d, time, end, price, seats, color] of EVENTS)
-      db.run('INSERT INTO events (slug, title, description, date, time, end_time, location, price, seats, color) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      await db.run('INSERT INTO events (slug, title, description, date, time, end_time, location, price, seats, color) VALUES (?,?,?,?,?,?,?,?,?,?)',
         slugify(title), title, desc, db.addDays(t, d), time, end, 'Chez SEM Cosmétique', price, seats, color);
 
     for (const p of POSTS)
-      db.run('INSERT INTO posts (slug, title, excerpt, content, category, color, read_time) VALUES (?,?,?,?,?,?,?)', slugify(p.title), p.title, p.excerpt, p.content, p.category, p.color, p.read);
+      await db.run('INSERT INTO posts (slug, title, excerpt, content, category, color, read_time) VALUES (?,?,?,?,?,?,?)', slugify(p.title), p.title, p.excerpt, p.content, p.category, p.color, p.read);
 
     for (const [name, rating, text, service] of REVIEWS)
-      db.run('INSERT INTO reviews (name, rating, text, service, approved) VALUES (?,?,?,?,1)', name, rating, text, service);
+      await db.run('INSERT INTO reviews (name, rating, text, service, approved) VALUES (?,?,?,?,1)', name, rating, text, service);
 
-    db.run("INSERT INTO promos (code, type, value, min_amount) VALUES ('BIENVENUE10', 'percent', 10, 0)");
-    db.run("INSERT INTO promos (code, type, value, min_amount) VALUES ('FIDELE2000', 'fixed', 2000, 15000)");
+    await db.run("INSERT INTO promos (code, type, value, min_amount) VALUES ('BIENVENUE10', 'percent', 10, 0)");
+    await db.run("INSERT INTO promos (code, type, value, min_amount) VALUES ('FIDELE2000', 'fixed', 2000, 15000)");
   });
 
   console.log('\n  Base de données initialisée.');
-  if (locked) console.warn('  Espace admin verrouillé : définissez ADMIN_EMAIL et ADMIN_PASSWORD dans les variables d’environnement de l’hébergeur.\n');
+  if (locked) console.warn('  Espace admin verrouillé : définissez ADMIN_PASSWORD dans les variables d’environnement de l’hébergeur.\n');
   else {
-    console.log(`  Compte administrateur : ${email}  /  ${process.env.ADMIN_PASSWORD ? '(mot de passe défini par ADMIN_PASSWORD)' : password}`);
+    console.log(`  Compte administrateur : ${adminPhone()} ou ${email}  /  ${process.env.ADMIN_PASSWORD ? '(mot de passe défini par ADMIN_PASSWORD)' : password}`);
     console.log('  Pensez à changer ce mot de passe dans Admin › Paramètres.\n');
   }
   return true;
 }
 
-export { seedIfEmpty };
+/**
+ * Applique ADMIN_PASSWORD / ADMIN_PHONE / ADMIN_EMAIL au compte administrateur, UNE fois par nouvelle valeur :
+ * il suffit de modifier ces variables chez l'hébergeur puis de redéployer. Un mot de passe changé ensuite depuis
+ * l'admin (Paramètres › Sécurité) est conservé tant que les variables ne changent pas.
+ */
+async function syncAdminFromEnv() {
+  const pw = process.env.ADMIN_PASSWORD, phone = process.env.ADMIN_PHONE, email = process.env.ADMIN_EMAIL?.toLowerCase();
+  if (!pw && !phone && !email) return false;
+  const mark = createHash('sha256').update(`sem|${pw}|${phone}|${email}`).digest('hex');
+  if ((await db.get("SELECT value FROM settings WHERE key = 'admin_env'"))?.value === mark) return false;
+  const admin = await db.get("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1");
+  if (!admin) return false;
+  await db.tx(async () => {
+    if (pw) {
+      await db.run('UPDATE users SET password = ? WHERE id = ?', await hashPassword(pw), admin.id);
+      await db.run("DELETE FROM settings WHERE key = 'admin_default_pw'");
+      await db.run('DELETE FROM sessions WHERE user_id = ?', admin.id); // déconnecte les anciennes sessions
+    }
+    if (phone) await db.run('UPDATE users SET phone = ? WHERE id = ?', phone, admin.id);
+    if (email && !(await db.get('SELECT 1 FROM users WHERE email = ? AND id != ?', email, admin.id))) await db.run('UPDATE users SET email = ? WHERE id = ?', email, admin.id);
+    await db.run("INSERT INTO settings (key, value) VALUES ('admin_env', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", mark);
+  });
+  console.log('  Identifiants administrateur mis à jour depuis les variables d’environnement.');
+  return true;
+}
+
+export { seedIfEmpty, syncAdminFromEnv };

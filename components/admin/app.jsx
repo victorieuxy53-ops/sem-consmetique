@@ -36,8 +36,8 @@ export function AdminLogin({ user }) {
         <form className="card stack" onSubmit={submit}>
           <span className="alog__ic"><Icon n="lock" /></span>
           <h1>Espace administration</h1>
-          {user ? <p className="pill pill--warn">Connectée en tant que {user.email} : ce compte n’a pas les droits d’administration.</p> : <p className="muted">Connectez-vous pour gérer rendez-vous, commandes, formations et contenus.</p>}
-          <Input label="E-mail" name="email" type="email" required autoComplete="username" />
+          {user ? <p className="pill pill--warn">Connectée en tant que {user.phone || user.email} : ce compte n’a pas les droits d’administration.</p> : <p className="muted">Connectez-vous pour gérer produits, photos, vidéos, rendez-vous, commandes et contenus.</p>}
+          <Input label="Numéro de téléphone ou e-mail" name="login" type="text" required autoComplete="username" autoCapitalize="none" spellCheck={false} />
           <Input label="Mot de passe" name="password" type="password" required autoComplete="current-password" />
           <Btn busy={busy} className="btn btn-primary btn-lg btn-block">Se connecter <Icon n="arrow" /></Btn>
           <a href="/" className="link-arrow link-arrow--back center"><Icon n="arrowL" /> Retour au site</a>
@@ -335,8 +335,10 @@ export function Settings() {
     <section className="card settings__sec" id="s-sec"><h3><Icon n="lock" /> Sécurité du compte</h3>
       <form className="aform" onSubmit={pw}><div className="aform__grid">
         <Input label="Mot de passe actuel" type="password" name="current" required autoComplete="current-password" />
-        <Input label="Nouveau mot de passe (10 caractères min.)" type="password" name="next" required minLength={10} autoComplete="new-password" />
-        <div className="full"><Input label="E-mail de connexion" type="email" name="email" defaultValue={user.email} /></div></div>
+        <Input label="Nouveau mot de passe (facultatif, 10 caractères min.)" type="password" name="next" minLength={10} autoComplete="new-password" />
+        <Input label="Téléphone de connexion" type="tel" name="phone" defaultValue={user.phone || ''} autoComplete="tel" />
+        <Input label="E-mail de connexion (facultatif)" type="email" name="email" defaultValue={/@(institut|sem-cosmetique)\.local$/.test(user.email) ? '' : user.email} /></div>
+        <p className="muted small">Vous vous connectez avec ce numéro de téléphone <em>ou</em> cet e-mail, et votre mot de passe. Saisissez votre mot de passe actuel pour valider.</p>
         <div className="row-end"><Btn busy={pwBusy}><Icon n="lock" /> Mettre à jour</Btn></div></form></section>
   </>;
 }

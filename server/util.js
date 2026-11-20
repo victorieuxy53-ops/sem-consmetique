@@ -62,18 +62,18 @@ function slugify(s) {
   return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'element';
 }
-function uniqueSlug(table, base, id = null) {
+async function uniqueSlug(table, base, id = null) {
   let s = slugify(base), n = 2;
-  while (db.get(`SELECT id FROM ${table} WHERE slug = ? AND id IS NOT ?`, s, id)) s = `${slugify(base)}-${n++}`;
+  while (await db.get(`SELECT id FROM ${table} WHERE slug = ? AND id IS NOT ?`, s, id)) s = `${slugify(base)}-${n++}`;
   return s;
 }
 const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-function uniqueRef(table, prefix) {
+async function uniqueRef(table, prefix) {
   for (;;) {
     const bytes = crypto.randomBytes(6);
     let r = prefix + '-';
     for (const b of bytes) r += ALPHA[b % ALPHA.length];
-    if (!db.get(`SELECT id FROM ${table} WHERE ref = ?`, r)) return r;
+    if (!await db.get(`SELECT id FROM ${table} WHERE ref = ?`, r)) return r;
   }
 }
 
@@ -82,12 +82,13 @@ const toMin = (t) => { const [h, m] = String(t).split(':').map(Number); return h
 const fromMin = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const dayDiff = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
 
-function bookingsOn(date) {
-  return db.all("SELECT time, duration FROM bookings WHERE date = ? AND status IN ('pending','confirmed')", date);
+async function bookingsOn(date) {
+  return await db.all("SELECT time, duration FROM bookings WHERE date = ? AND status IN ('pending','confirmed')", date);
 }
 
 /** Créneaux d'une journée pour une durée donnée. */
-function daySlots(date, duration, existing = bookingsOn(date)) {
+async function daySlots(date, duration, existing) {
+  existing ??= await bookingsOn(date);
   const s = db.settings();
   const t0 = db.today();
   if (!isDate(date)) return { closed: true, reason: 'invalid', slots: [] };
@@ -112,27 +113,29 @@ function daySlots(date, duration, existing = bookingsOn(date)) {
 }
 
 /** État de chaque jour d'un mois : open | full | closed | past */
-function monthAvailability(month, duration) {
+async function monthAvailability(month, duration) {
   if (!/^\d{4}-\d{2}$/.test(month)) throw bad('Mois invalide');
   const [y, m] = month.split('-').map(Number);
   const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const rows = db.all("SELECT date, time, duration FROM bookings WHERE date LIKE ? AND status IN ('pending','confirmed')", month + '-%');
+  const rows = await db.all("SELECT date, time, duration FROM bookings WHERE date LIKE ? AND status IN ('pending','confirmed')", month + '-%');
   const byDate = {};
   for (const r of rows) (byDate[r.date] ||= []).push(r);
   const out = {};
   for (let d = 1; d <= days; d++) {
     const date = `${month}-${String(d).padStart(2, '0')}`;
-    const r = daySlots(date, duration, byDate[date] || []);
+    const r = await daySlots(date, duration, byDate[date] || []);
     out[date] = r.closed ? (r.reason === 'past' ? 'past' : 'closed') : r.slots.some((x) => x.available) ? 'open' : 'full';
   }
   return out;
 }
 
-/** Premier créneau libre (pour l'accroche « prochain créneau » de l'accueil). */
-function nextSlot(duration = 60) {
-  let d = db.today();
-  for (let i = 0; i < 14; i++, d = db.addDays(d, 1)) {
-    const r = daySlots(d, duration);
+/** Premier créneau libre (pour l'accroche « prochain créneau » de l'accueil) : une seule requête pour 14 jours. */
+async function nextSlot(duration = 60) {
+  const t0 = db.today(), last = db.addDays(t0, 13);
+  const byDate = {};
+  for (const r of await db.all("SELECT date, time, duration FROM bookings WHERE date >= ? AND date <= ? AND status IN ('pending','confirmed')", t0, last)) (byDate[r.date] ||= []).push(r);
+  for (let i = 0, d = t0; i < 14; i++, d = db.addDays(d, 1)) {
+    const r = await daySlots(d, duration, byDate[d] || []);
     const s = r.slots.find((x) => x.available);
     if (s) return { date: d, time: s.time };
   }
@@ -140,9 +143,9 @@ function nextSlot(duration = 60) {
 }
 
 /* ---------------------------------------------------------- promotions */
-function applyPromo(code, subtotal) {
+async function applyPromo(code, subtotal) {
   if (!code) return { discount: 0, promo: null };
-  const p = db.get('SELECT * FROM promos WHERE code = ? AND active = 1', String(code).trim());
+  const p = await db.get('SELECT * FROM promos WHERE code = ? AND active = 1', String(code).trim());
   if (!p) fail(400, 'Code promo invalide.');
   if (p.expires && p.expires < db.today()) fail(400, 'Ce code promo a expiré.');
   if (p.max_uses && p.uses >= p.max_uses) fail(400, 'Ce code promo a atteint sa limite d’utilisation.');
@@ -166,8 +169,10 @@ const MAGIC = [
 ];
 function imageExt(buf) { const m = MAGIC.find((x) => x.test(buf)); return m ? m.ext : null; }
 
-/** Enregistre une image envoyée en data-URL base64 (formulaires publics). */
-function saveDataImage(dataUrl, maxBytes = 5 * 1024 * 1024) {
+const MIME_OF = { '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' };
+
+/** Enregistre une image envoyée en data-URL base64 (formulaires publics) : Vercel Blob en ligne, sinon disque. */
+async function saveDataImage(dataUrl, maxBytes = 5 * 1024 * 1024) {
   if (!dataUrl) return null;
   const m = /^data:image\/[a-z+.-]+;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl));
   if (!m) throw bad('Image invalide.');
@@ -176,6 +181,10 @@ function saveDataImage(dataUrl, maxBytes = 5 * 1024 * 1024) {
   const ext = imageExt(buf);
   if (!ext) throw bad('Format d’image non pris en charge (JPG, PNG, WEBP).');
   const name = `${Date.now().toString(36)}-${crypto.randomBytes(5).toString('hex')}${ext}`;
+  if (db.BLOB) {
+    const { put } = await import('@vercel/blob');
+    return (await put(`demandes/${name}`, buf, { access: 'public', contentType: MIME_OF[ext], addRandomSuffix: false })).url;
+  }
   fs.writeFileSync(path.join(/* turbopackIgnore: true */ db.UPLOAD_DIR, name), buf);
   return '/uploads/' + name;
 }

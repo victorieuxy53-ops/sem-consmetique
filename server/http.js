@@ -4,6 +4,7 @@
  */
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
+import { ready } from './db.js';
 
 // Vercel est toujours en HTTPS derrière un proxy : activé d'office (forçable avec TRUST_PROXY / SECURE_COOKIES = 0 ou 1).
 const onOff = (v, def) => (v === '1' ? true : v === '0' ? false : def);
@@ -108,6 +109,7 @@ export async function handle(req) {
   try {
     // Protection CSRF : toute écriture doit venir de notre client fetch (en-tête personnalisé).
     if (method !== 'GET' && req.headers.get('x-requested-with') !== 'fetch') fail(403, 'Requête refusée');
+    await ready(); // base ouverte + paramètres à jour
     const out = await found.r.handler(ctx);
     res = out instanceof Response ? out : json(200, out === undefined ? { ok: true } : out);
   } catch (e) {
@@ -123,6 +125,7 @@ export async function call(path, cookies = {}) {
   const url = new URL(path, 'http://local');
   const found = match('GET', url.pathname);
   if (!found.r) throw new HttpError(404, 'Ressource introuvable');
+  await ready();
   const out = await found.r.handler(makeCtx(null, url, found.params, cookies));
   return JSON.parse(JSON.stringify(out ?? null));
 }

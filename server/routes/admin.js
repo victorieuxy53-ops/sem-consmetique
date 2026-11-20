@@ -87,8 +87,8 @@ const STATUSES = {
   registrations: ['pending', 'confirmed', 'attended', 'cancelled'],
 };
 
-function resource(ctx) {
-  A.requireAdmin(ctx);
+async function resource(ctx) {
+  await A.requireAdmin(ctx);
   const r = R[ctx.params.res];
   if (!r) fail(404, 'Ressource inconnue');
   return r;
@@ -103,8 +103,8 @@ function readFields(r, body, partial) {
   return out;
 }
 
-get('/api/admin/r/:res', (ctx) => {
-  const r = resource(ctx);
+get('/api/admin/r/:res', async (ctx) => {
+  const r = await resource(ctx);
   const where = [], params = [];
   const a = r.alias ? r.alias + '.' : '';
   if (ctx.query.status) { where.push(`${a}status = ?`); params.push(ctx.query.status); }
@@ -118,24 +118,24 @@ get('/api/admin/r/:res', (ctx) => {
   const base = r.list || `SELECT * FROM ${r.table}`;
   const sql = `SELECT * FROM (${base}${where.length && r.alias ? ' WHERE ' + where.join(' AND ') : ''}) ${!r.alias && where.length ? 'WHERE ' + where.join(' AND ') : ''}`;
   const order = r.alias ? r.order.replace(new RegExp(`\\b${r.alias}\\.`, 'g'), '') : r.order;
-  const rows = db.all(`${sql} ORDER BY ${order} LIMIT ${Math.min(2000, +ctx.query.limit || 1000)}`, ...params);
+  const rows = await db.all(`${sql} ORDER BY ${order} LIMIT ${Math.min(2000, +ctx.query.limit || 1000)}`, ...params);
   if (ctx.params.res === 'orders' && rows.length) {
-    const items = db.all(`SELECT * FROM order_items WHERE order_id IN (${rows.map(() => '?').join(',')})`, ...rows.map((o) => o.id));
+    const items = await db.all(`SELECT * FROM order_items WHERE order_id IN (${rows.map(() => '?').join(',')})`, ...rows.map((o) => o.id));
     for (const o of rows) o.items = items.filter((i) => i.order_id === o.id);
   }
   return rows;
 });
 
 post('/api/admin/r/:res', async (ctx) => {
-  const r = resource(ctx);
+  const r = await resource(ctx);
   if (r.noCreate) fail(405, 'Création non disponible pour cette ressource');
   const body = await ctx.json(1_000_000);
   const data = readFields(r, body, false);
-  if (r.slugFrom) data.slug = U.uniqueSlug(r.table, data.slug || data[r.slugFrom]);
-  if (r.ref) data.ref = U.uniqueRef(r.table, r.ref);
+  if (r.slugFrom) data.slug = await U.uniqueSlug(r.table, data.slug || data[r.slugFrom]);
+  if (r.ref) data.ref = await U.uniqueRef(r.table, r.ref);
   if (ctx.params.res === 'promos') data.code = data.code.toUpperCase().replace(/\s+/g, '');
   if (ctx.params.res === 'bookings') {
-    const s = data.service_id && db.get('SELECT duration, price FROM services WHERE id = ?', data.service_id);
+    const s = data.service_id && await db.get('SELECT duration, price FROM services WHERE id = ?', data.service_id);
     data.duration ??= s?.duration || 60;
     data.price ??= s?.price || 0;
     data.status ||= 'confirmed';
@@ -145,137 +145,154 @@ post('/api/admin/r/:res', async (ctx) => {
     data.status ||= 'active';
     if (data.status === 'active') data.activated_at = new Date().toISOString().replace('T', ' ').slice(0, 19);
     data.payment_method ||= 'manuel';
-    if (db.get('SELECT id FROM enrollments WHERE course_id = ? AND user_id = ?', data.course_id, data.user_id)) fail(409, 'Cette cliente est déjà inscrite à cette formation.');
+    if (await db.get('SELECT id FROM enrollments WHERE course_id = ? AND user_id = ?', data.course_id, data.user_id)) fail(409, 'Cette cliente est déjà inscrite à cette formation.');
   }
   if (STATUSES[ctx.params.res] && data.status && !STATUSES[ctx.params.res].includes(data.status)) fail(400, 'Statut invalide');
   const keys = Object.keys(data);
-  const res = db.run(`INSERT INTO ${r.table} (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`, ...keys.map((k) => data[k]));
-  return db.get(`SELECT * FROM ${r.table} WHERE id = ?`, res.lastInsertRowid);
+  const res = await db.run(`INSERT INTO ${r.table} (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`, ...keys.map((k) => data[k]));
+  return await db.get(`SELECT * FROM ${r.table} WHERE id = ?`, res.lastInsertRowid);
 });
 
 put('/api/admin/r/:res/:id', async (ctx) => {
-  const r = resource(ctx);
+  const r = await resource(ctx);
   const id = U.int(ctx.params.id);
-  const before = db.get(`SELECT * FROM ${r.table} WHERE id = ?`, id);
+  const before = await db.get(`SELECT * FROM ${r.table} WHERE id = ?`, id);
   if (!before) fail(404, 'Élément introuvable');
   const body = await ctx.json(1_000_000);
   const data = readFields(r, body, true);
   const name = ctx.params.res;
   if (STATUSES[name] && data.status && !STATUSES[name].includes(data.status)) fail(400, 'Statut invalide');
-  if (r.slugFrom && 'slug' in data) data.slug = U.uniqueSlug(r.table, data.slug || before[r.slugFrom], id);
+  if (r.slugFrom && 'slug' in data) data.slug = await U.uniqueSlug(r.table, data.slug || before[r.slugFrom], id);
   if (name === 'promos' && data.code) data.code = data.code.toUpperCase().replace(/\s+/g, '');
   if (name === 'users') {
-    const me = A.currentUser(ctx);
+    const me = await A.currentUser(ctx);
     if (id === me.id && data.role && data.role !== 'admin') fail(400, 'Vous ne pouvez pas retirer vos propres droits administrateur.');
     if (data.role && !['client', 'admin'].includes(data.role)) fail(400, 'Rôle invalide');
   }
   if (name === 'enrollments' && data.status === 'active' && before.status !== 'active') data.activated_at = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
-  return db.tx(() => {
+  return await db.tx(async () => {
     // Gestion du stock lors d'une annulation / réactivation de commande.
     if (name === 'orders' && data.status && data.status !== before.status) {
-      const items = db.all('SELECT product_id, qty FROM order_items WHERE order_id = ?', id);
+      const items = await db.all('SELECT product_id, qty FROM order_items WHERE order_id = ?', id);
       const sign = data.status === 'cancelled' ? 1 : before.status === 'cancelled' ? -1 : 0;
-      if (sign) for (const it of items) db.run('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL', sign * it.qty, it.product_id);
+      if (sign) for (const it of items) await db.run('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL', sign * it.qty, it.product_id);
     }
     const keys = Object.keys(data);
-    if (keys.length) db.run(`UPDATE ${r.table} SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...keys.map((k) => data[k]), id);
-    return db.get(`SELECT * FROM ${r.table} WHERE id = ?`, id);
+    if (keys.length) await db.run(`UPDATE ${r.table} SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...keys.map((k) => data[k]), id);
+    return await db.get(`SELECT * FROM ${r.table} WHERE id = ?`, id);
   });
 });
 
-del('/api/admin/r/:res/:id', (ctx) => {
-  const r = resource(ctx);
-  if (r.pk === 'email') { db.run(`DELETE FROM ${r.table} WHERE email = ?`, ctx.params.id); return { ok: true }; }
+del('/api/admin/r/:res/:id', async (ctx) => {
+  const r = await resource(ctx);
+  if (r.pk === 'email') { await db.run(`DELETE FROM ${r.table} WHERE email = ?`, ctx.params.id); return { ok: true }; }
   const id = U.int(ctx.params.id);
-  if (ctx.params.res === 'users' && id === A.currentUser(ctx).id) fail(400, 'Vous ne pouvez pas supprimer votre propre compte.');
-  if (ctx.params.res === 'orders') {
-    const o = db.get('SELECT status FROM orders WHERE id = ?', id);
-    if (o && o.status !== 'cancelled') for (const it of db.all('SELECT product_id, qty FROM order_items WHERE order_id = ?', id)) db.run('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL', it.qty, it.product_id);
-  }
-  db.run(`DELETE FROM ${r.table} WHERE id = ?`, id);
+  if (ctx.params.res === 'users' && id === (await A.currentUser(ctx)).id) fail(400, 'Vous ne pouvez pas supprimer votre propre compte.');
+  await db.tx(async () => {
+    if (ctx.params.res === 'orders') {
+      const o = await db.get('SELECT status FROM orders WHERE id = ?', id);
+      if (o && o.status !== 'cancelled') for (const it of await db.all('SELECT product_id, qty FROM order_items WHERE order_id = ?', id)) await db.run('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL', it.qty, it.product_id);
+    }
+    // Suppressions en cascade explicites : la base en ligne (Turso) n'applique pas forcément les clés étrangères.
+    for (const sql of CASCADE[ctx.params.res] || []) await db.run(sql, id);
+    await db.run(`DELETE FROM ${r.table} WHERE id = ?`, id);
+  });
   return { ok: true };
 });
 
+/** Lignes dépendantes à supprimer (ou détacher) avant l'élément lui-même. */
+const CASCADE = {
+  courses: ['DELETE FROM progress WHERE lesson_id IN (SELECT id FROM lessons WHERE course_id = ?)', 'DELETE FROM lessons WHERE course_id = ?', 'DELETE FROM enrollments WHERE course_id = ?'],
+  lessons: ['DELETE FROM progress WHERE lesson_id = ?'],
+  orders: ['DELETE FROM order_items WHERE order_id = ?'],
+  events: ['DELETE FROM registrations WHERE event_id = ?'],
+  services: ['UPDATE bookings SET service_id = NULL WHERE service_id = ?'],
+  users: ['DELETE FROM sessions WHERE user_id = ?', 'DELETE FROM progress WHERE user_id = ?', 'DELETE FROM enrollments WHERE user_id = ?',
+    'UPDATE bookings SET user_id = NULL WHERE user_id = ?', 'UPDATE orders SET user_id = NULL WHERE user_id = ?',
+    'UPDATE custom_orders SET user_id = NULL WHERE user_id = ?', 'UPDATE registrations SET user_id = NULL WHERE user_id = ?'],
+};
+
 /* ---------------------------------------------------------- statistiques */
-get('/api/admin/counts', (ctx) => {
-  A.requireAdmin(ctx);
-  return counts();
+get('/api/admin/counts', async (ctx) => {
+  await A.requireAdmin(ctx);
+  return await counts();
 });
-function counts() {
-  const n = (sql, ...p) => db.get(sql, ...p).n;
-  return {
-    bookings: n("SELECT COUNT(*) n FROM bookings WHERE status = 'pending'"),
-    orders: n("SELECT COUNT(*) n FROM orders WHERE status = 'pending'"),
-    custom_orders: n("SELECT COUNT(*) n FROM custom_orders WHERE status = 'new'"),
-    enrollments: n("SELECT COUNT(*) n FROM enrollments WHERE status = 'pending'"),
-    registrations: n("SELECT COUNT(*) n FROM registrations WHERE status = 'pending'"),
-    messages: n('SELECT COUNT(*) n FROM messages WHERE is_read = 0'),
-    reviews: n('SELECT COUNT(*) n FROM reviews WHERE approved = 0'),
+async function counts() {
+  const Q = {
+    bookings: "SELECT COUNT(*) n FROM bookings WHERE status = 'pending'",
+    orders: "SELECT COUNT(*) n FROM orders WHERE status = 'pending'",
+    custom_orders: "SELECT COUNT(*) n FROM custom_orders WHERE status = 'new'",
+    enrollments: "SELECT COUNT(*) n FROM enrollments WHERE status = 'pending'",
+    registrations: "SELECT COUNT(*) n FROM registrations WHERE status = 'pending'",
+    messages: 'SELECT COUNT(*) n FROM messages WHERE is_read = 0',
+    reviews: 'SELECT COUNT(*) n FROM reviews WHERE approved = 0',
   };
+  const vals = await Promise.all(Object.values(Q).map(async (sql) => (await db.get(sql)).n));
+  return Object.fromEntries(Object.keys(Q).map((k, i) => [k, vals[i]]));
 }
 
-get('/api/admin/stats', (ctx) => {
-  A.requireAdmin(ctx);
+get('/api/admin/stats', async (ctx) => {
+  await A.requireAdmin(ctx);
   const t = db.today();
   const from = db.addDays(t, -29);
   const month = t.slice(0, 7);
   const off = `'${(Number(db.settings().tz_offset) || 0) >= 0 ? '+' : ''}${Number(db.settings().tz_offset) || 0} hours'`;
   const days = {};
   for (let i = 0; i < 30; i++) { const d = db.addDays(from, i); days[d] = { date: d, shop: 0, courses: 0, care: 0, events: 0, bookings: 0 }; }
-  for (const r of db.all(`SELECT date(created_at, ${off}) d, SUM(total) v FROM orders WHERE status != 'cancelled' AND date(created_at, ${off}) >= ? GROUP BY d`, from)) if (days[r.d]) days[r.d].shop = r.v;
-  for (const r of db.all(`SELECT date(COALESCE(activated_at, created_at), ${off}) d, SUM(amount) v FROM enrollments WHERE status = 'active' AND date(COALESCE(activated_at, created_at), ${off}) >= ? GROUP BY d`, from)) if (days[r.d]) days[r.d].courses = r.v;
-  for (const r of db.all("SELECT date d, SUM(price) v, COUNT(*) n FROM bookings WHERE status = 'done' AND date >= ? AND date <= ? GROUP BY date", from, t)) if (days[r.d]) days[r.d].care = r.v;
-  for (const r of db.all("SELECT date d, COUNT(*) n FROM bookings WHERE status != 'cancelled' AND date >= ? AND date <= ? GROUP BY date", from, t)) if (days[r.d]) days[r.d].bookings = r.n;
-  for (const r of db.all(`SELECT date(r.created_at, ${off}) d, SUM(r.seats * e.price) v FROM registrations r JOIN events e ON e.id = r.event_id WHERE r.status IN ('confirmed','attended') AND date(r.created_at, ${off}) >= ? GROUP BY d`, from)) if (days[r.d]) days[r.d].events = r.v;
+  for (const r of await db.all(`SELECT date(created_at, ${off}) d, SUM(total) v FROM orders WHERE status != 'cancelled' AND date(created_at, ${off}) >= ? GROUP BY d`, from)) if (days[r.d]) days[r.d].shop = r.v;
+  for (const r of await db.all(`SELECT date(COALESCE(activated_at, created_at), ${off}) d, SUM(amount) v FROM enrollments WHERE status = 'active' AND date(COALESCE(activated_at, created_at), ${off}) >= ? GROUP BY d`, from)) if (days[r.d]) days[r.d].courses = r.v;
+  for (const r of await db.all("SELECT date d, SUM(price) v, COUNT(*) n FROM bookings WHERE status = 'done' AND date >= ? AND date <= ? GROUP BY date", from, t)) if (days[r.d]) days[r.d].care = r.v;
+  for (const r of await db.all("SELECT date d, COUNT(*) n FROM bookings WHERE status != 'cancelled' AND date >= ? AND date <= ? GROUP BY date", from, t)) if (days[r.d]) days[r.d].bookings = r.n;
+  for (const r of await db.all(`SELECT date(r.created_at, ${off}) d, SUM(r.seats * e.price) v FROM registrations r JOIN events e ON e.id = r.event_id WHERE r.status IN ('confirmed','attended') AND date(r.created_at, ${off}) >= ? GROUP BY d`, from)) if (days[r.d]) days[r.d].events = r.v;
   const series = Object.values(days).map((d) => ({ ...d, total: d.shop + d.courses + d.care + d.events }));
 
   const monthRevenue =
-    db.get(`SELECT COALESCE(SUM(total), 0) n FROM orders WHERE status != 'cancelled' AND strftime('%Y-%m', created_at, ${off}) = ?`, month).n +
-    db.get(`SELECT COALESCE(SUM(amount), 0) n FROM enrollments WHERE status = 'active' AND strftime('%Y-%m', COALESCE(activated_at, created_at), ${off}) = ?`, month).n +
-    db.get("SELECT COALESCE(SUM(price), 0) n FROM bookings WHERE status = 'done' AND substr(date, 1, 7) = ?", month).n;
+    (await db.get(`SELECT COALESCE(SUM(total), 0) n FROM orders WHERE status != 'cancelled' AND strftime('%Y-%m', created_at, ${off}) = ?`, month)).n +
+    (await db.get(`SELECT COALESCE(SUM(amount), 0) n FROM enrollments WHERE status = 'active' AND strftime('%Y-%m', COALESCE(activated_at, created_at), ${off}) = ?`, month)).n +
+    (await db.get("SELECT COALESCE(SUM(price), 0) n FROM bookings WHERE status = 'done' AND substr(date, 1, 7) = ?", month)).n;
 
   return {
     today: t,
-    counts: counts(),
+    counts: await counts(),
     kpi: {
       month_revenue: monthRevenue,
-      today_bookings: db.get("SELECT COUNT(*) n FROM bookings WHERE date = ? AND status IN ('pending','confirmed','done')", t).n,
-      upcoming_bookings: db.get("SELECT COUNT(*) n FROM bookings WHERE date >= ? AND status IN ('pending','confirmed')", t).n,
-      clients: db.get("SELECT COUNT(*) n FROM users WHERE role = 'client'").n,
-      students: db.get("SELECT COUNT(DISTINCT user_id) n FROM enrollments WHERE status = 'active'").n,
-      orders_month: db.get(`SELECT COUNT(*) n FROM orders WHERE status != 'cancelled' AND strftime('%Y-%m', created_at, ${off}) = ?`, month).n,
-      newsletter: db.get('SELECT COUNT(*) n FROM newsletter').n,
+      today_bookings: (await db.get("SELECT COUNT(*) n FROM bookings WHERE date = ? AND status IN ('pending','confirmed','done')", t)).n,
+      upcoming_bookings: (await db.get("SELECT COUNT(*) n FROM bookings WHERE date >= ? AND status IN ('pending','confirmed')", t)).n,
+      clients: (await db.get("SELECT COUNT(*) n FROM users WHERE role = 'client'")).n,
+      students: (await db.get("SELECT COUNT(DISTINCT user_id) n FROM enrollments WHERE status = 'active'")).n,
+      orders_month: (await db.get(`SELECT COUNT(*) n FROM orders WHERE status != 'cancelled' AND strftime('%Y-%m', created_at, ${off}) = ?`, month)).n,
+      newsletter: (await db.get('SELECT COUNT(*) n FROM newsletter')).n,
     },
     series,
-    agenda: db.all(`SELECT b.*, s.name service_name FROM bookings b LEFT JOIN services s ON s.id = b.service_id
+    agenda: await db.all(`SELECT b.*, s.name service_name FROM bookings b LEFT JOIN services s ON s.id = b.service_id
                     WHERE b.date = ? AND b.status != 'cancelled' ORDER BY b.time`, t),
-    top_services: db.all(`SELECT s.name, COUNT(*) n FROM bookings b JOIN services s ON s.id = b.service_id
+    top_services: await db.all(`SELECT s.name, COUNT(*) n FROM bookings b JOIN services s ON s.id = b.service_id
                           WHERE b.status != 'cancelled' AND b.date >= ? GROUP BY s.id ORDER BY n DESC LIMIT 6`, db.addDays(t, -90)),
-    low_stock: db.all('SELECT id, name, stock FROM products WHERE active = 1 AND stock IS NOT NULL AND stock <= 5 ORDER BY stock LIMIT 8'),
-    events: db.all(`SELECT e.id, e.title, e.date, e.seats, COALESCE((SELECT SUM(seats) FROM registrations r WHERE r.event_id = e.id AND r.status != 'cancelled'), 0) taken
+    low_stock: await db.all('SELECT id, name, stock FROM products WHERE active = 1 AND stock IS NOT NULL AND stock <= 5 ORDER BY stock LIMIT 8'),
+    events: await db.all(`SELECT e.id, e.title, e.date, e.seats, COALESCE((SELECT SUM(seats) FROM registrations r WHERE r.event_id = e.id AND r.status != 'cancelled'), 0) taken
                     FROM events e WHERE e.date >= ? AND e.active = 1 ORDER BY e.date LIMIT 4`, t),
-    recent_orders: db.all('SELECT id, ref, name, total, status, created_at FROM orders ORDER BY id DESC LIMIT 5'),
-    default_password: !!db.get("SELECT 1 FROM settings WHERE key = 'admin_default_pw'"),
+    recent_orders: await db.all('SELECT id, ref, name, total, status, created_at FROM orders ORDER BY id DESC LIMIT 5'),
+    default_password: !!await db.get("SELECT 1 FROM settings WHERE key = 'admin_default_pw'"),
     ephemeral: db.EPHEMERAL,
   };
 });
 
-get('/api/admin/options', (ctx) => {
-  A.requireAdmin(ctx);
+get('/api/admin/options', async (ctx) => {
+  await A.requireAdmin(ctx);
   return {
-    services: db.all('SELECT id, name, category, duration, price FROM services ORDER BY sort, id'),
-    courses: db.all('SELECT id, title, price FROM courses ORDER BY id DESC'),
-    users: db.all('SELECT id, name, email FROM users ORDER BY name'),
-    events: db.all('SELECT id, title, date FROM events ORDER BY date DESC'),
+    services: await db.all('SELECT id, name, category, duration, price FROM services ORDER BY sort, id'),
+    courses: await db.all('SELECT id, title, price FROM courses ORDER BY id DESC'),
+    users: await db.all('SELECT id, name, email FROM users ORDER BY name'),
+    events: await db.all('SELECT id, title, date FROM events ORDER BY date DESC'),
   };
 });
 
 /* ------------------------------------------------------------ paramètres */
-get('/api/admin/settings', (ctx) => { A.requireAdmin(ctx); return db.settings(); });
+get('/api/admin/settings', async (ctx) => { await A.requireAdmin(ctx); return db.settings(); });
 
 put('/api/admin/settings', async (ctx) => {
-  A.requireAdmin(ctx);
+  await A.requireAdmin(ctx);
   const b = await ctx.json(500_000);
   const clean = {};
   for (const [k, def] of Object.entries(db.DEFAULT_SETTINGS)) {
@@ -291,20 +308,23 @@ put('/api/admin/settings', async (ctx) => {
     clean.map_embed = m && /^https:\/\/(www\.)?google\.[a-z.]+\/maps\/embed/.test(m[1]) ? m[1] : '';
   }
   if (clean.closed_dates) clean.closed_dates = clean.closed_dates.filter(U.isDate);
-  return db.saveSettings(clean);
+  return await db.saveSettings(clean);
 });
 
 post('/api/admin/password', async (ctx) => {
-  const u = A.requireAdmin(ctx);
+  const u = await A.requireAdmin(ctx);
   const b = await ctx.json();
-  const row = db.get('SELECT password FROM users WHERE id = ?', u.id);
+  const row = await db.get('SELECT password FROM users WHERE id = ?', u.id);
   if (!(await A.verifyPassword(b.current, row.password))) fail(400, 'Mot de passe actuel incorrect.');
-  if (String(b.next || '').length < 10) fail(400, 'Le nouveau mot de passe doit contenir au moins 10 caractères.');
+  // Nouveau mot de passe facultatif : on peut ne changer que le téléphone ou l'e-mail de connexion.
+  if (b.next && String(b.next).length < 10) fail(400, 'Le nouveau mot de passe doit contenir au moins 10 caractères.');
   const email = b.email ? U.email(b.email, true) : null;
-  if (email && db.get('SELECT id FROM users WHERE email = ? AND id != ?', email, u.id)) fail(409, 'Cet e-mail est déjà utilisé.');
-  db.run('UPDATE users SET password = ?, email = COALESCE(?, email) WHERE id = ?', await A.hashPassword(b.next), email, u.id);
-  db.run("DELETE FROM settings WHERE key = 'admin_default_pw'");
-  db.run('DELETE FROM sessions WHERE user_id = ? AND token != ?', u.id, crypto.createHash('sha256').update(ctx.cookies.sid || '').digest('hex'));
+  const phone = b.phone ? U.phone(b.phone) : null;
+  if (email && await db.get('SELECT id FROM users WHERE email = ? AND id != ?', email, u.id)) fail(409, 'Cet e-mail est déjà utilisé.');
+  await db.run('UPDATE users SET password = COALESCE(?, password), email = COALESCE(?, email), phone = COALESCE(?, phone) WHERE id = ?',
+    b.next ? await A.hashPassword(b.next) : null, email, phone, u.id);
+  if (b.next) await db.run("DELETE FROM settings WHERE key = 'admin_default_pw'");
+  await db.run('DELETE FROM sessions WHERE user_id = ? AND token != ?', u.id, crypto.createHash('sha256').update(ctx.cookies.sid || '').digest('hex'));
   return { ok: true };
 });
 
@@ -312,7 +332,7 @@ post('/api/admin/password', async (ctx) => {
 const IMG_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 const VID_EXT = ['.mp4', '.webm', '.mov', '.m4v'];
 post('/api/admin/upload', async (ctx) => {
-  A.requireAdmin(ctx);
+  await A.requireAdmin(ctx);
   const ext = path.extname(String(ctx.query.name || '')).toLowerCase();
   const isImg = IMG_EXT.includes(ext), isVid = VID_EXT.includes(ext);
   if (!isImg && !isVid) fail(400, 'Format non pris en charge. Images : JPG, PNG, WEBP · Vidéos : MP4, WEBM, MOV');
@@ -341,9 +361,9 @@ post('/api/admin/upload', async (ctx) => {
 });
 
 /* ---------------------------------------------------------------- export */
-get('/api/admin/export/:res', (ctx) => {
-  const r = resource(ctx);
-  const rows = db.all(`SELECT * FROM (${r.list || `SELECT * FROM ${r.table}`})`).map((row) => {
+get('/api/admin/export/:res', async (ctx) => {
+  const r = await resource(ctx);
+  const rows = (await db.all(`SELECT * FROM (${r.list || `SELECT * FROM ${r.table}`})`)).map((row) => {
     const o = { ...row };
     delete o.password;
     return o;

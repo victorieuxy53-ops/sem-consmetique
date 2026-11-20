@@ -1,17 +1,21 @@
 /**
- * Base de données SQLite (module natif node:sqlite) + paramètres du site.
- * Connexion unique par processus (globalThis) : Next.js peut charger ce module plusieurs fois.
+ * Base de données + paramètres du site.
+ * - En ligne (Vercel) : base Turso (libSQL, compatible SQLite) si TURSO_DATABASE_URL est défini → données PERMANENTES,
+ *   partagées par toutes les instances : ce qu'Ella modifie dans l'admin reste en ligne.
+ * - En local / sur un VPS : fichier SQLite dans le dossier des données (data/institut.sqlite).
+ * Une seule API asynchrone pour les deux : get / all / run / tx (+ settings() synchrone, rechargé à chaque requête).
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createClient } from '@libsql/client';
 
 /**
- * Dossier des données d'exécution (base, photos, vidéos), hors bundle :
+ * Dossier des données locales (base hors Turso, photos et vidéos hors Vercel Blob), hors bundle :
  * - `DATA_DIR` si défini (serveur VPS, disque persistant) ;
- * - sur Vercel, `/tmp` : le dossier du projet y est en lecture seule (sinon erreur 500 sur toutes les pages) ;
+ * - sur Vercel, `/tmp` : le dossier du projet y est en lecture seule ;
  * - sinon `./data`, avec repli sur le dossier temporaire si l'hébergeur interdit l'écriture.
- * Dans le dossier temporaire, les données sont ÉPHÉMÈRES (recréées à chaque démarrage à froid) : voir README.
  */
 function dataDir() {
   const tmp = path.join(/* turbopackIgnore: true */ os.tmpdir(), 'sem-cosmetique-data');
@@ -25,33 +29,24 @@ function dataDir() {
     } catch (e) { if (dir === tmp) throw e; }
   }
 }
-const G = (globalThis.__institutDb ||= { stmts: new Map(), depth: 0, settings: null });
+const G = (globalThis.__institutDb ||= { settings: null, settingsAt: 0 });
 export const DATA_DIR = (G.dir ||= dataDir());
 export const UPLOAD_DIR = path.join(/* turbopackIgnore: true */ DATA_DIR, 'uploads');
 export const VIDEO_DIR = path.join(/* turbopackIgnore: true */ DATA_DIR, 'videos');
-/** Vrai quand les données vivent dans le dossier temporaire (ex. Vercel) : perdues au prochain démarrage à froid. */
-export const EPHEMERAL = DATA_DIR.startsWith(os.tmpdir());
 
-/** Réessaie une opération quand un autre processus tient le verrou (SQLite refuse parfois sans attendre
-    pour éviter un interblocage, malgré busy_timeout). */
-const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-function retryBusy(fn) {
-  for (let i = 0; ; i++) {
-    try { return fn(); } catch (e) { if (i >= 50 || !/locked|busy/i.test(e.message)) throw e; pause(40 + Math.random() * 120); }
-  }
-}
+/** Base distante Turso (persistante). Variables posées automatiquement par l'intégration Vercel › Turso. */
+const REMOTE_URL = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || '';
+export const REMOTE = /^(libsql|https?|wss?):\/\//.test(REMOTE_URL);
+/** Photos et vidéos stockées dans Vercel Blob (persistant) quand le jeton est présent. */
+export const BLOB = !!process.env.BLOB_READ_WRITE_TOKEN;
+const IN_TMP = DATA_DIR.startsWith(os.tmpdir());
+/** Vrai quand la base vit dans le dossier temporaire : perdue au prochain démarrage à froid. */
+export const EPHEMERAL = !REMOTE && IN_TMP;
+/** Vrai quand les photos/vidéos envoyées vivent dans le dossier temporaire : perdues au prochain démarrage à froid. */
+export const MEDIA_EPHEMERAL = !BLOB && IN_TMP;
 
-/** Ouvre la base (une seule fois par processus) et crée les tables si besoin. Appelée au premier usage, jamais à
-    l'import : `next build` charge ce module dans plusieurs workers en parallèle sans avoir besoin de la base. */
-function open() {
-  const warn = process.emitWarning; // masque l'avertissement « SQLite expérimental »
-  process.emitWarning = (w, ...a) => (String(w?.message ?? w).includes('SQLite') ? undefined : warn.call(process, w, ...a));
-  const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
-  process.emitWarning = warn;
-  const c = new DatabaseSync(path.join(/* turbopackIgnore: true */ DATA_DIR, 'institut.sqlite'));
-  c.exec('PRAGMA busy_timeout = 10000; PRAGMA foreign_keys = ON;');
-  retryBusy(() => c.exec('PRAGMA journal_mode = WAL;'));
-  retryBusy(() => c.exec(`
+/* ------------------------------------------------------------ connexion */
+const SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 
 CREATE TABLE IF NOT EXISTS users (
@@ -148,48 +143,81 @@ CREATE TABLE IF NOT EXISTS newsletter (email TEXT PRIMARY KEY COLLATE NOCASE, cr
 CREATE TABLE IF NOT EXISTS gallery (
   id INTEGER PRIMARY KEY, title TEXT, category TEXT, image TEXT, after_image TEXT, sort INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')));
-`));
-  G.db = c;
+`;
+
+const BUSY = /locked|busy/i;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Réessaie quand un autre processus tient le verrou du fichier local (jamais au milieu d'une transaction). */
+async function retry(fn) {
+  for (let i = 0; ; i++) {
+    try { return await fn(); } catch (e) { if (i >= 60 || !BUSY.test(e.message)) throw e; await sleep(30 + Math.random() * 120); }
+  }
 }
 
-/** Migrations douces : colonnes ajoutées après la création initiale de la base (aussi sur un serveur déjà lancé). */
-function migrate() {
-  const addColumn = (col, type) => {
-    if (G.db.prepare('PRAGMA table_info(products)').all().some((c) => c.name === col)) return;
-    try { retryBusy(() => G.db.exec(`ALTER TABLE products ADD COLUMN ${col} ${type}`)); }
-    catch (e) { if (!/duplicate column/i.test(e.message)) throw e; } // ajoutée entre-temps par un autre processus
-  };
-  addColumn('bulk_qty', 'INTEGER');   // prix dégressif : dès N articles…
-  addColumn('bulk_price', 'INTEGER'); // …ce prix à l'unité
-  G.schema = 2;
+/** Colonnes ajoutées après la création initiale de la base. */
+const COLUMNS = {
+  products: { bulk_qty: 'INTEGER', bulk_price: 'INTEGER', video: 'TEXT', images: 'TEXT' },
+};
+
+async function init() {
+  const c = REMOTE
+    ? createClient({ url: REMOTE_URL, authToken: process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || undefined })
+    : createClient({ url: 'file:' + path.join(/* turbopackIgnore: true */ DATA_DIR, 'institut.sqlite').split(path.sep).join('/') });
+  if (!REMOTE) {
+    await retry(() => c.execute('PRAGMA busy_timeout = 10000'));
+    await retry(() => c.execute('PRAGMA journal_mode = WAL'));
+  }
+  await retry(() => c.executeMultiple(SCHEMA));
+  for (const [table, cols] of Object.entries(COLUMNS)) {
+    const have = new Set((await c.execute(`PRAGMA table_info(${table})`)).rows.map((r) => r.name));
+    for (const [col, type] of Object.entries(cols)) {
+      if (have.has(col)) continue;
+      try { await retry(() => c.execute(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`)); }
+      catch (e) { if (!/duplicate column/i.test(e.message)) throw e; } // ajoutée entre-temps par une autre instance
+    }
+  }
+  G.client = c;
+}
+/** Connexion prête (ouverte au premier usage, jamais à l'import : `next build` charge ce module sans base). */
+const connected = () => (G.init ||= init().catch((e) => { G.init = null; throw e; }));
+
+/** À appeler en début de requête : base prête + paramètres à jour. */
+export async function ready() {
+  await connected();
+  await loadSettings();
 }
 
-/** Connexion SQLite (ouverte et migrée au premier appel). */
-export function conn() {
-  if (!G.db) open();
-  if (G.schema !== 2) migrate();
-  return G.db;
-}
-
-/* ------------------------------------------------------------ helpers */
-function stmt(sql) {
-  let s = G.stmts.get(sql);
-  if (!s) { s = conn().prepare(sql); G.stmts.set(sql, s); }
-  return s;
-}
+/* ------------------------------------------------------------ requêtes */
+const txStore = (G.als ||= new AsyncLocalStorage());
 const norm = (v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v);
-export const all = (sql, ...p) => stmt(sql).all(...p.map(norm));
-export const get = (sql, ...p) => stmt(sql).get(...p.map(norm));
-export const run = (sql, ...p) => stmt(sql).run(...p.map(norm));
+const rows = (rs) => rs.rows.map((r) => Object.fromEntries(rs.columns.map((c, i) => [c, r[i]])));
 
-export function tx(fn) {
-  if (G.depth) return fn();
-  const c = conn();
-  G.depth++;
-  c.exec('BEGIN IMMEDIATE');
-  try { const r = fn(); c.exec('COMMIT'); return r; }
-  catch (e) { c.exec('ROLLBACK'); throw e; }
-  finally { G.depth--; }
+async function exec(sql, params) {
+  await connected();
+  const stmt = { sql, args: params.map(norm) };
+  const t = txStore.getStore();
+  return t ? t.execute(stmt) : retry(() => G.client.execute(stmt));
+}
+export const all = async (sql, ...p) => rows(await exec(sql, p));
+export const get = async (sql, ...p) => rows(await exec(sql, p))[0];
+export async function run(sql, ...p) {
+  const r = await exec(sql, p);
+  return { changes: r.rowsAffected, lastInsertRowid: r.lastInsertRowid == null ? undefined : Number(r.lastInsertRowid) };
+}
+
+/** Transaction en écriture : toutes les requêtes faites pendant `fn` (même dans d'autres modules) y participent. */
+export async function tx(fn) {
+  if (txStore.getStore()) return fn();
+  await connected();
+  const t = await retry(() => G.client.transaction('write'));
+  try {
+    const out = await txStore.run(t, fn);
+    await t.commit();
+    return out;
+  } catch (e) {
+    try { await t.rollback(); } catch { /* déjà annulée */ }
+    throw e;
+  } finally { t.close(); }
 }
 
 /* ------------------------------------------------------------ settings */
@@ -232,27 +260,31 @@ export const DEFAULT_SETTINGS = {
   stats: { years: 8, clients: 2500, services: 30, rating: 4.9 },
 };
 
-
-export function settings() {
-  // Le cache vit dans globalThis (survit au rechargement à chaud de `npm run dev`) : on le jette dès que
-  // les valeurs par défaut du code changent, sinon le site garderait les anciens textes jusqu'au redémarrage.
-  if (G.settings && G.settingsFrom === DEFAULT_SETTINGS) return G.settings;
-  G.settingsFrom = DEFAULT_SETTINGS;
+/** Paramètres en cache (instance) : rechargés au plus toutes les 3 s pour suivre les modifications faites
+    depuis une autre instance (Vercel), et aussitôt après un enregistrement sur celle-ci. */
+const SETTINGS_TTL = 3000;
+export async function loadSettings(force = false) {
+  if (!force && G.settings && G.settingsFrom === DEFAULT_SETTINGS && Date.now() - G.settingsAt < SETTINGS_TTL) return G.settings;
   const s = structuredClone(DEFAULT_SETTINGS);
-  for (const r of all('SELECT key, value FROM settings')) {
+  for (const r of await all('SELECT key, value FROM settings')) {
+    if (!(r.key in DEFAULT_SETTINGS)) continue; // clés internes (ex. admin_env) : jamais envoyées au navigateur
     try { s[r.key] = JSON.parse(r.value); } catch { /* ignore */ }
   }
-  return (G.settings = s);
+  Object.assign(G, { settings: s, settingsAt: Date.now(), settingsFrom: DEFAULT_SETTINGS });
+  return s;
 }
-export function saveSettings(obj) {
-  tx(() => {
+/** Paramètres (synchrone) : chargés par ready() en début de requête. */
+export function settings() {
+  return G.settings && G.settingsFrom === DEFAULT_SETTINGS ? G.settings : structuredClone(DEFAULT_SETTINGS);
+}
+export async function saveSettings(obj) {
+  await tx(async () => {
     for (const [k, v] of Object.entries(obj)) {
       if (!(k in DEFAULT_SETTINGS)) continue;
-      run('INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', k, JSON.stringify(v));
+      await run('INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', k, JSON.stringify(v));
     }
   });
-  G.settings = null;
-  return settings();
+  return loadSettings(true);
 }
 
 /* ------------------------------------------------------ heure locale */
