@@ -40,7 +40,9 @@ export function Header() {
         </nav>
         <div className="hdr__actions">
           {tel && <a href={telHref(tel)} className="hdr__call" data-external aria-label={`Appeler le ${tel}`}><span className="hdr__call-ic"><Icon n="phone" /></span><span className="hdr__call-txt"><small>Appelez-nous</small>{tel}</span></a>}
-          <a href="/compte" className={cx('icon-btn', user && 'logged')} aria-label="Mon compte" data-nav-account><Icon n="user" /></a>
+          {user?.role === 'admin'
+            ? <a href="/admin" className="icon-btn logged" aria-label="Administration" title="Administration" data-external data-nav-account><Icon n="user" /></a>
+            : <a href="/compte" className={cx('icon-btn', user && 'logged')} aria-label="Mon compte" data-nav-account><Icon n="user" /></a>}
           <button className="icon-btn cart-btn" aria-label="Ouvrir le panier" onClick={() => ui.set({ cart: true, menu: false })}><Icon n="bag" /><span className="cart-count" hidden={!n}>{n}</span></button>
           <a href="/reservation" className="btn btn-primary btn-sm hdr__book">Réserver</a>
           <button className="burger" aria-label="Menu" aria-expanded={menu} onClick={() => ui.set((v) => ({ ...v, menu: !v.menu }))}><span /><span /><span /></button>
@@ -143,13 +145,14 @@ export function Footer() {
 /* ================================================== BARRE D'ACTIONS MOBILE */
 export function MobileBar() {
   const tel = phones()[0];
+  const admin = useApp().user?.role === 'admin';
   return (
     <div className="mbar">
       {tel && <a href={telHref(tel)} data-external><Icon n="phone" /><span>Appeler</span></a>}
       <a href={waMain('Bonjour, je souhaite un renseignement.')} target="_blank" rel="noopener"><Icon n="whatsapp" /><span>WhatsApp</span></a>
       <a href="/reservation" className="mbar__main"><Icon n="calendar" /><span>Réserver</span></a>
       <a href="/boutique"><Icon n="bag" /><span>Boutique</span></a>
-      <a href="/compte"><Icon n="user" /><span>Compte</span></a>
+      {admin ? <a href="/admin" data-external><Icon n="user" /><span>Admin</span></a> : <a href="/compte"><Icon n="user" /><span>Compte</span></a>}
     </div>
   );
 }

@@ -488,12 +488,15 @@ export const PostCard = ({ p, hidden, style }) => (
 );
 
 /* ============================================================ FORMULAIRES */
-export function AuthForms({ reason, tab: t0 = 'login', onSuccess }) {
+/** Connexion (identifiants → connectée directement). La création de compte n'apparaît que là où elle sert
+ *  (achat d'une formation vidéo, `register`) ; l'administratrice part tout droit vers l'administration. */
+export function AuthForms({ reason, tab: t0 = 'login', onSuccess, register: canRegister = false }) {
   const { setUser } = useApp();
   const router = useRouter();
-  const [tab, setTab] = useState(t0);
+  const [tab, setTab] = useState(canRegister ? t0 : 'login');
   const auth = (kind) => async (d) => {
     const { user } = await api(`/api/auth/${kind}`, { method: 'POST', body: d });
+    if (user.role === 'admin') { toast(`Bonjour ${user.name.split(' ')[0]}, ouverture de l’administration…`); location.assign('/admin'); return; }
     setUser(user);
     toast(kind === 'login' ? `Ravie de vous revoir, ${user.name.split(' ')[0]} !` : 'Bienvenue ! Votre compte est créé.');
     router.refresh();
@@ -503,28 +506,28 @@ export function AuthForms({ reason, tab: t0 = 'login', onSuccess }) {
   return (
     <div className="auth" data-tab={tab}>
       {reason && <p className="auth__reason"><Icon n="lock" /> {reason}</p>}
-      <div className="seg"><button type="button" data-t="login" onClick={() => setTab('login')}>Connexion</button><button type="button" data-t="register" onClick={() => setTab('register')}>Créer un compte</button><span className="seg__ink" /></div>
+      {canRegister && <div className="seg"><button type="button" data-t="login" onClick={() => setTab('login')}>Connexion</button><button type="button" data-t="register" onClick={() => setTab('register')}>Créer un compte</button><span className="seg__ink" /></div>}
       <form className="auth__form" data-form="login" onSubmit={login}>
         <Input label="E-mail ou téléphone" name="login" type="text" required autoComplete="username" autoCapitalize="none" spellCheck={false} />
         <Input label="Mot de passe" name="password" type="password" required autoComplete="current-password" />
         <Btn busy={b1} className="btn btn-primary btn-block">Se connecter <Icon n="arrow" /></Btn>
         <p className="muted small center">Mot de passe oublié ? Contactez-nous, nous le réinitialisons pour vous.</p>
       </form>
-      <form className="auth__form" data-form="register" onSubmit={register}>
+      {canRegister && <form className="auth__form" data-form="register" onSubmit={register}>
         <Input label="Nom complet" name="name" required autoComplete="name" />
         <Input label="E-mail" name="email" type="email" required autoComplete="email" />
         <Input label="Téléphone (WhatsApp)" name="phone" type="tel" autoComplete="tel" />
         <Input label="Mot de passe (8 caractères min.)" name="password" type="password" required minLength={8} autoComplete="new-password" />
         <Btn busy={b2} className="btn btn-primary btn-block">Créer mon compte <Icon n="arrow" /></Btn>
-      </form>
+      </form>}
     </div>
   );
 }
 
-/** Connexion dans une modale ; résout avec l'utilisatrice (ou null si fermée). */
-export const authModal = (reason = '') => new Promise((resolve) => {
+/** Connexion dans une modale ; résout avec l'utilisatrice (ou null si fermée). `register` : propose aussi la création de compte. */
+export const authModal = (reason = '', { register = false } = {}) => new Promise((resolve) => {
   let user = null;
-  openModal({ size: 'modal--auth', onClose: () => resolve(user), render: (close) => <><h3 className="modal__title">Mon espace</h3><AuthForms reason={reason} onSuccess={(u) => { user = u; close(); }} /></> });
+  openModal({ size: 'modal--auth', onClose: () => resolve(user), render: (close) => <><h3 className="modal__title">Mon espace</h3><AuthForms reason={reason} register={register} onSuccess={(u) => { user = u; close(); }} /></> });
 });
 
 export const confirmBox = (text, { ok = 'Confirmer', danger = false } = {}) => new Promise((resolve) => {

@@ -97,7 +97,7 @@ export function Course({ d, buyNow }) {
   };
   const onBuy = async () => {
     if (user) return buy();
-    if (await authModal('Connectez-vous pour acheter et suivre la formation.')) go(path + '?buy=1', { replace: true });
+    if (await authModal('Connectez-vous ou créez votre compte pour acheter et suivre la formation.', { register: true })) go(path + '?buy=1', { replace: true });
   };
   useEffect(() => {
     if (!buyNow || d.access || !user || e?.status === 'pending') return;
@@ -226,7 +226,7 @@ export function Account({ d, tab: t0 }) {
 
   if (!u || !d) return <>
     <PageHero eyebrow="Mon espace" title="Bienvenue *chez vous*" sub="Retrouvez vos rendez-vous, commandes, formations et demandes sur-mesure en un seul endroit." crumbs={[[null, 'Mon espace']]} cls="phero--sm" />
-    <section className="section section--tight"><div className="container narrow-sm"><div className="card" data-reveal><AuthForms tab={t0 === 'register' ? 'register' : 'login'} /></div></div></section>
+    <section className="section section--tight"><div className="container narrow-sm"><div className="card" data-reveal><AuthForms /></div></div></section>
   </>;
 
   const today = todayStr();
