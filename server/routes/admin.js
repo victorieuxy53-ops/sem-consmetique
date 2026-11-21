@@ -104,11 +104,11 @@ function readFields(r, body, partial) {
     if (partial && !(k in body)) continue;
     out[k] = U.coerce(spec, body[k], k);
   }
-  // Photos supplémentaires d'un produit : tableau JSON d'adresses (12 maximum).
+  // Photos supplémentaires d'un produit : tableau JSON d'adresses (30 maximum).
   if ('images' in out) {
     let list = [];
     try { list = JSON.parse(out.images || '[]'); } catch { /* ignore */ }
-    out.images = JSON.stringify((Array.isArray(list) ? list : []).filter(mediaUrl).slice(0, 12));
+    out.images = JSON.stringify((Array.isArray(list) ? list : []).filter(mediaUrl).slice(0, 30));
   }
   for (const k of ['image', 'video']) if (out[k] && !mediaUrl(out[k])) fail(400, `Adresse de ${k === 'video' ? 'vidéo' : 'photo'} invalide.`);
   return out;

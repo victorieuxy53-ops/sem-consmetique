@@ -100,7 +100,7 @@ function ImageField({ f, v }) {
 function ImagesField({ f, v }) {
   const parse = (x) => { try { const a = JSON.parse(x || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
   const [list, setList] = useState(() => parse(v)), [prog, setProg] = useState(null);
-  const max = 12;
+  const max = 30;
   const pick = async (e) => {
     const files = [...e.target.files].slice(0, max - list.length);
     e.target.value = '';

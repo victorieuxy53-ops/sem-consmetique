@@ -79,7 +79,7 @@ Autres commandes :
 ### Côté patronne (`/admin`)
 - **Connexion par numéro de téléphone** (ou e-mail) et mot de passe.
 - **Produits en autonomie** : ajouter, modifier, supprimer ; nom, description, prix (et prix dégressif),
-  photo principale, **galerie jusqu’à 12 photos**, **vidéo** — envoyées depuis le téléphone, réduites
+  photo principale, **galerie jusqu’à 30 photos**, **vidéo** — envoyées depuis le téléphone, réduites
   automatiquement. Sur la fiche produit : galerie avec vignettes, balayage au doigt et lecteur vidéo.
 - **WhatsApp des deux fondatrices** : chaque demande arrive chez l’une, l’autre en un clic, et copie
   automatique aux deux (CallMeBot).

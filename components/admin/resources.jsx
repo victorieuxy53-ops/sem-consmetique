@@ -161,7 +161,7 @@ export const R = {
       { k: 'short', l: 'Accroche courte', full: 1 }, { k: 'description', l: 'Description', t: 'textarea', full: 1 }, { k: 'usage', l: 'Conseils d’utilisation', t: 'textarea', rows: 3, full: 1 },
       { k: 'tags', l: 'Mots-clés diagnostic', full: 1, help: 'Ex. : seche, grasse, taches, acne, eclat, sensible, tous' },
       { k: 'image', l: 'Photo principale', t: 'image', help: 'Affichée dans la boutique et le carrousel. Prise au téléphone : elle est réduite automatiquement.' },
-      { k: 'images', l: 'Autres photos du produit', t: 'images', help: 'Jusqu’à 12 photos, affichées en galerie sur la fiche produit. Les flèches changent l’ordre.' },
+      { k: 'images', l: 'Autres photos du produit', t: 'images', help: 'Jusqu’à 30 photos, affichées en galerie sur la fiche produit. Les flèches changent l’ordre.' },
       { k: 'video', l: 'Vidéo du produit (facultatif)', t: 'video', help: 'MP4 de préférence (30 s à 2 min) : présentation, texture, mode d’emploi… Affichée sur la fiche produit.' },
       { k: 'art', l: 'Illustration (si pas de photo)', t: 'select', opts: ART_OPTS }, { k: 'color', l: 'Couleur dominante', t: 'color' },
       { k: 'featured', l: 'Coup de cœur (mis en avant)', t: 'checkbox' }, { k: 'active', l: 'Visible en boutique', t: 'checkbox', def: 1 },
