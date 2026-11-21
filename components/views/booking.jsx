@@ -2,7 +2,7 @@
 /* Réservation de rendez-vous (assistant en 4 étapes) & ateliers avec places limitées. */
 import { useEffect, useRef, useState } from 'react';
 import { api, address, cap, CATS, cx, downloadIcs, fdate, fdur, hm, localNow, money, openStatus, phones, saveContact, settings, telHref, toast, waMain, whatsappRelay } from '@/lib/core';
-import { Area, Btn, Empty, EventCard, Icon, Input, OpenDot, PageHero, SuccessCheck, pop, useContact, useSubmit } from '../ui';
+import { Area, Btn, Empty, EventCard, Icon, Input, OpenDot, PageHero, SuccessCheck, WaTeam, pop, useContact, useSubmit } from '../ui';
 
 const STEPS = ['Prestation', 'Date & heure', 'Coordonnées', 'Confirmation'];
 const GROUPS = [['Matin', (t) => t < '12:00'], ['Après-midi', (t) => t >= '12:00' && t < '17:00'], ['Soirée', (t) => t >= '17:00']];
@@ -128,7 +128,7 @@ export function Booking({ services, pre }) {
             <div className="recap"><div><Icon n="leaf" /> {r.service}</div><div><Icon n="calendar" /> {cap(fdate(r.date))}</div><div><Icon n="clock" /> {hm(r.time)} · {fdur(r.duration)}</div><div><Icon n="wallet" /> {r.price ? money(r.price) : 'Sur devis'}</div></div>
             <p className="muted">Notre équipe vous confirme le rendez-vous très vite par téléphone ou WhatsApp. Gardez bien votre référence.</p>
             <div className="row-wrap center">
-              <a className="btn btn-gold" href={waMain(msg)} target="_blank" rel="noopener"><Icon n="whatsapp" /> Rouvrir WhatsApp</a>
+              <WaTeam text={msg} />
               <button type="button" className="btn btn-ghost" onClick={() => downloadIcs({ title: `${r.service}, ${s.site_name}`, date: r.date, time: r.time, duration: r.duration, location: address(), description: `Réf. ${r.ref}` })}><Icon n="calendar" /> Ajouter à mon agenda</button>
               <a className="btn btn-ghost" href={`/suivi?ref=${encodeURIComponent(r.ref)}`}><Icon n="eye" /> Suivre</a>
             </div>

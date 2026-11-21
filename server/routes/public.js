@@ -4,6 +4,7 @@ import * as db from '../db.js';
 import { get, post, fail, rateLimit, streamFile } from '../http.js';
 import { currentUser, requireUser, publicUser } from '../auth.js';
 import * as U from '../util.js';
+import { notifyTeam, fcfa, frDate } from '../notify.js';
 
 const nowISO = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 
@@ -69,6 +70,7 @@ post('/api/bookings', async (ctx) => {
     const ref = await U.uniqueRef('bookings', 'RDV');
     await db.run(`INSERT INTO bookings (ref, service_id, user_id, name, phone, email, date, time, duration, price, notes)
             VALUES (?,?,?,?,?,?,?,?,?,?,?)`, ref, svc.id, user?.id, name, phone, email, b.date, b.time, svc.duration, svc.price, notes);
+    notifyTeam(`🗓️ Nouveau rendez-vous ${ref}\n${svc.name}\n${frDate(b.date)} à ${b.time.replace(':', 'h')}\n${name} · ${phone}${notes ? `\n« ${notes} »` : ''}`);
     return { ref, date: b.date, time: b.time, service: svc.name, price: svc.price, duration: svc.duration };
   });
 });
@@ -130,6 +132,7 @@ post('/api/orders', async (ctx) => {
       if (l.p.stock !== null) await db.run('UPDATE products SET stock = stock - ? WHERE id = ?', l.qty, l.p.id);
     }
     if (promo) await db.run('UPDATE promos SET uses = uses + 1 WHERE id = ?', promo.id);
+    notifyTeam(`🛍️ Nouvelle commande ${ref} : ${fcfa(total)}\n${lines.map((l) => `• ${l.qty} × ${l.p.name}`).join('\n')}\n${delivery === 'livraison' ? `Livraison : ${address}${city ? ', ' + city : ''}` : 'Retrait sur place'} · ${payment === 'momo' ? `Mobile Money (réf. ${paymentRef || '?'})` : 'paiement à la livraison'}\n${name} · ${phone}${notes ? `\n« ${notes} »` : ''}`);
     return { ref, total, subtotal, discount, delivery_fee: fee, payment };
   });
 });
@@ -155,6 +158,7 @@ post('/api/custom-orders', async (ctx) => {
   const ref = await U.uniqueRef('custom_orders', 'SM');
   await db.run(`INSERT INTO custom_orders (ref, user_id, type, details, budget, wanted_date, image, name, phone, email)
           VALUES (?,?,?,?,?,?,?,?,?,?)`, ref, (await currentUser(ctx))?.id, type, JSON.stringify(details), U.str(b.budget, 60), wanted, image, name, phone, email);
+  notifyTeam(`🎁 Demande sur-mesure ${ref} (${type})\n${Object.entries(details).filter(([, v]) => v && v.length).map(([k, v]) => `• ${k} : ${Array.isArray(v) ? v.join(', ') : v}`).join('\n')}${b.budget ? `\nBudget : ${U.str(b.budget, 60)}` : ''}${wanted ? `\nPour le ${frDate(wanted)}` : ''}\n${name} · ${phone}`);
   return { ref };
 });
 
@@ -198,11 +202,13 @@ post('/api/courses/:id/enroll', async (ctx) => {
   if (existing) {
     await db.run(`UPDATE enrollments SET payment_method = ?, payment_ref = ?, payer_phone = ?, amount = ?, status = ?,
             created_at = datetime('now'), activated_at = ? WHERE id = ?`, method, pref, payer, c.price, status, free ? nowISO() : null, existing.id);
+    if (!free) notifyTeam(`🎓 Paiement de formation à vérifier (${existing.ref})\n« ${c.title} » : ${fcfa(c.price)}\n${method} · réf. ${pref}\n${user.name}${payer ? ' · ' + payer : ''}`);
     return { status, ref: existing.ref };
   }
   const ref = await U.uniqueRef('enrollments', 'FOR');
   await db.run(`INSERT INTO enrollments (ref, course_id, user_id, amount, payment_method, payment_ref, payer_phone, status, activated_at)
           VALUES (?,?,?,?,?,?,?,?,?)`, ref, c.id, user.id, c.price, method, pref, payer, status, free ? nowISO() : null);
+  notifyTeam(free ? `🎓 Nouvelle inscription (gratuite) : « ${c.title} »\n${user.name}` : `🎓 Paiement de formation à vérifier (${ref})\n« ${c.title} » : ${fcfa(c.price)}\n${method} · réf. ${pref}\n${user.name}${payer ? ' · ' + payer : ''}`);
   return { status, ref };
 });
 
@@ -265,6 +271,7 @@ post('/api/events/:id/register', async (ctx) => {
     const ref = await U.uniqueRef('registrations', 'ATL');
     await db.run(`INSERT INTO registrations (ref, event_id, user_id, name, phone, email, seats, payment_ref, status) VALUES (?,?,?,?,?,?,?,?,?)`,
       ref, e.id, (await currentUser(ctx))?.id, name, phone, email, seats, U.str(b.payment_ref, 120), e.price ? 'pending' : 'confirmed');
+    notifyTeam(`🎟️ Réservation d’atelier ${ref}\n« ${e.title} » le ${frDate(e.date)}\n${seats} place(s)${e.price ? ' · ' + fcfa(e.price * seats) : ''}\n${name} · ${phone}`);
     return { ref, total: e.price * seats, status: e.price ? 'pending' : 'confirmed' };
   });
 });
@@ -283,8 +290,9 @@ get('/api/gallery', async () => await db.all('SELECT * FROM gallery ORDER BY sor
 post('/api/reviews', async (ctx) => {
   rateLimit(ctx, 'review', 3, 3600);
   const b = await ctx.json();
-  await db.run('INSERT INTO reviews (name, rating, text, service) VALUES (?,?,?,?)',
-    U.str(b.name, 80, 'nom', true), U.int(b.rating, 'note', { min: 1, max: 5 }) || 5, U.str(b.text, 1000, 'avis', true), U.str(b.service, 120));
+  const rv = { name: U.str(b.name, 80, 'nom', true), rating: U.int(b.rating, 'note', { min: 1, max: 5 }) || 5, text: U.str(b.text, 1000, 'avis', true), service: U.str(b.service, 120) };
+  await db.run('INSERT INTO reviews (name, rating, text, service) VALUES (?,?,?,?)', rv.name, rv.rating, rv.text, rv.service);
+  notifyTeam(`⭐ Nouvel avis ${'★'.repeat(rv.rating)} (${rv.rating}/5) de ${rv.name}${rv.service ? ' · ' + rv.service : ''}\n« ${rv.text} »\nÀ valider dans Admin › Avis.`);
   return { ok: true };
 });
 
@@ -295,8 +303,9 @@ post('/api/contact', async (ctx) => {
   const phone = U.phone(b.phone, kind === 'rappel');
   const email = U.email(b.email);
   if (kind === 'contact' && !phone && !email) fail(400, 'Indiquez au moins un téléphone ou un e-mail.');
-  await db.run('INSERT INTO messages (kind, name, email, phone, subject, message) VALUES (?,?,?,?,?,?)',
-    kind, U.str(b.name, 120, 'nom', true), email, phone, U.str(b.subject, 160), U.str(b.message, 3000, 'message', kind === 'contact'));
+  const msg = { name: U.str(b.name, 120, 'nom', true), subject: U.str(b.subject, 160), message: U.str(b.message, 3000, 'message', kind === 'contact') };
+  await db.run('INSERT INTO messages (kind, name, email, phone, subject, message) VALUES (?,?,?,?,?,?)', kind, msg.name, email, phone, msg.subject, msg.message);
+  notifyTeam(kind === 'rappel' ? `📞 Rappel demandé : ${msg.name} · ${phone}${msg.message ? `\n${msg.message}` : ''}` : `✉️ Nouveau message : ${msg.name}${phone ? ' · ' + phone : ''}${msg.subject ? `\nSujet : ${msg.subject}` : ''}\n${msg.message}`);
   return { ok: true };
 });
 

@@ -1,10 +1,10 @@
 'use client';
 /* Pages vitrine : accueil, à propos, prestations, contact, conseils, diagnostic, 404. */
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { api, address, cap, CATS, copy, cx, DAYS, fdate, fdur, fshort, hoursLabel, localNow, money, num, openModal, openStatus, PCATS, phones, telHref, todayStr, toast, waMain, WEEK, whatsappRelay } from '@/lib/core';
+import { api, address, cap, CATS, copy, cx, DAYS, fdate, fdur, fshort, hoursLabel, localNow, money, num, openModal, openStatus, PCATS, phones, telHref, todayStr, toast, waHref, waMain, waTeam, WEEK, whatsappRelay } from '@/lib/core';
 import {
   addToCart, Avatar, BgVideo, Btn, BulkNote, CallbackForm, DarkHeader, Count, Cover, CourseCard, Empty, EventCard, Icon, Input, LogoMark, Md, OpenDot, PageHero, Paras, PostCard,
-  Price, ProductArt, ProductCard, SecHead, Seg, Select, ServiceCard, Slideshow, Split, Stars, pop, reviewModal, useApp, useSubmit, Area,
+  Price, ProductArt, ProductCard, SecHead, Seg, Select, ServiceCard, Slideshow, Split, Stars, WaTeam, pop, reviewModal, useApp, useSubmit, Area,
 } from '../ui';
 
 const AV = ['#d6336f', '#1b2a5c', '#3b56a6', '#a8235a', '#2d4387'];
@@ -320,14 +320,14 @@ function Faq({ q, a }) {
 export function Contact() {
   const { s } = useApp();
   const st = openStatus(), wd = localNow().getUTCDay();
-  const [kind, setKind] = useState('contact');
+  const [kind, setKind] = useState('contact'), [sentUrl, setSentUrl] = useState(null);
   const [submit, busy] = useSubmit(async (d, f) => {
     const wa = whatsappRelay();
     const body = kind === 'rappel' ? { kind, name: d.name, phone: d.phone, subject: 'Demande de rappel', message: `Créneau : ${d.when}${d.message ? '. ' + d.message : ''}` } : { kind, ...d };
     await api('/api/contact', { method: 'POST', body }).catch(() => {}); // copie dans Admin › Messages ; WhatsApp reste le canal principal
-    wa.send(kind === 'rappel'
+    setSentUrl(wa.send(kind === 'rappel'
       ? `Bonjour, je suis ${d.name}. Pouvez-vous me rappeler au ${d.phone} (${String(d.when).toLowerCase()}) ?${d.message ? `\n${d.message}` : ''}`
-      : `Bonjour, je suis ${d.name}${d.phone ? ` (${d.phone})` : ''}.\nSujet : ${d.subject}\n\n${d.message}`);
+      : `Bonjour, je suis ${d.name}${d.phone ? ` (${d.phone})` : ''}.\nSujet : ${d.subject}\n\n${d.message}`));
     f.reset();
     toast('WhatsApp s’ouvre avec votre message : appuyez sur Envoyer pour nous le transmettre.');
   });
@@ -349,7 +349,7 @@ export function Contact() {
       <div className="container contact">
         <div className="contact__info" data-stagger="90">
           {phones().map((p, i) => <Info key={p} href={telHref(p)} ic="phone" label={`Téléphone ${phones().length > 1 ? i + 1 : ''}`} value={p} />)}
-          <Info ext href={waMain('Bonjour !')} ic="whatsapp" wa label="WhatsApp" value="Réponse rapide" />
+          {waTeam().map((m) => <Info key={m.phone} ext href={waHref(m.phone, 'Bonjour !')} ic="whatsapp" wa label={`WhatsApp · ${m.name}`} value={m.phone} />)}
           {s.email && <Info href={`mailto:${s.email}`} ic="mail" label="E-mail" value={s.email} />}
           {address() && <Info ic="pin" label="Adresse" value={address()} />}
           <div className="hours card">
@@ -366,7 +366,8 @@ export function Contact() {
             </> : <Select label="Quand souhaitez-vous être rappelée ?" name="when" options={['Dès que possible', 'Ce matin', 'Cet après-midi', 'Ce soir', 'Demain']} />}
             <Area label="Votre message" name="message" rows={5} required={kind === 'contact'} />
             <Btn busy={busy} className="btn btn-wa btn-lg btn-block"><Icon n="whatsapp" /> Envoyer sur WhatsApp</Btn>
-            <p className="small muted center">Votre message s’ouvre dans WhatsApp, prêt à être envoyé à {s.site_name}.</p>
+            {sentUrl ? <div className="wa-sent wa-sent--box"><Icon n="whatsapp" /><div><strong>Message prêt dans WhatsApp</strong> : appuyez sur « Envoyer ». Pour être sûre d’avoir une réponse rapide, envoyez-le aussi à l’autre fondatrice :<WaTeam url={sentUrl} small /></div></div>
+              : <p className="small muted center">Votre message s’ouvre dans WhatsApp, prêt à être envoyé à {s.site_name}.</p>}
           </form>
         </div>
       </div>

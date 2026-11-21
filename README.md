@@ -77,6 +77,12 @@ Autres commandes :
 - Application installable sur téléphone (PWA, en HTTPS).
 
 ### Côté patronne (`/admin`)
+- **Connexion par numéro de téléphone** (ou e-mail) et mot de passe.
+- **Produits en autonomie** : ajouter, modifier, supprimer ; nom, description, prix (et prix dégressif),
+  photo principale, **galerie jusqu’à 12 photos**, **vidéo** — envoyées depuis le téléphone, réduites
+  automatiquement. Sur la fiche produit : galerie avec vignettes, balayage au doigt et lecteur vidéo.
+- **WhatsApp des deux fondatrices** : chaque demande arrive chez l’une, l’autre en un clic, et copie
+  automatique aux deux (CallMeBot).
 - **Tableau de bord** : chiffre d'affaires, rendez-vous du jour, tâches à traiter, graphique 30 jours,
   prestations les plus demandées, stock faible, remplissage des ateliers.
 - **Notifications en direct** : son et pastille à chaque nouvelle réservation, commande, paiement ou message.
@@ -138,36 +144,40 @@ Cochez « Aperçu gratuit » sur la première leçon pour donner envie d'acheter
 
 ## 6. Mettre le site en ligne
 
-Deux possibilités, selon le besoin :
+### 6.1 Vercel (recommandé) : site + admin permanents, gratuit
 
-| | Vercel | Serveur VPS (ou Railway / Render avec disque) |
-|---|---|---|
-| Site public, boutique, demandes → WhatsApp | ✅ | ✅ |
-| Modifications faites dans `/admin` (prix, produits, photos, paramètres) | ⚠️ **perdues** au redémarrage | ✅ conservées |
-| Commandes, rendez-vous, messages enregistrés dans l’admin | ⚠️ **perdus** au redémarrage | ✅ conservés |
-| Coût / mise en route | gratuit, en 2 minutes | quelques €/mois, plus technique |
+Le site utilise une base **Turso** (compatible SQLite) et le stockage **Vercel Blob** pour les photos
+et vidéos : tout ce qu’Ella fait dans `/admin` (produits, prix, photos, vidéos, paramètres) **reste en ligne**.
+Les deux services ont une offre gratuite et se branchent en quelques clics depuis Vercel :
 
-### 6.1 Vercel (vitrine + WhatsApp)
+1. *Vercel › votre projet › **Storage** › Create Database* : choisir **Turso**, créer la base, la
+   **connecter au projet**. Les variables `TURSO_DATABASE_URL` et `TURSO_AUTH_TOKEN` sont ajoutées seules.
+2. *Storage › Create › **Blob*** : créer le store et le **connecter au projet** (variable
+   `BLOB_READ_WRITE_TOKEN` ajoutée seule).
+3. *Settings › Environment Variables* : `ADMIN_PASSWORD` (mot de passe de l’admin ; le numéro de
+   connexion est par défaut le WhatsApp principal, modifiable avec `ADMIN_PHONE`).
+4. *Deployments › … › **Redeploy***. Au premier démarrage, la base Turso reçoit le catalogue SEM.
 
-Sur Vercel, le dossier du projet est en **lecture seule** : la base SQLite est créée dans `/tmp`,
-**recréée à chaque démarrage à froid** (catalogue SEM, textes et réglages par défaut du code).
-Toutes les demandes des clientes arrivent sur WhatsApp, donc le site reste pleinement utilisable ;
-en revanche, les changements de contenu se font **dans le code** (`server/catalogue-sem.js`,
-`server/db.js` › `DEFAULT_SETTINGS`) puis par un nouveau déploiement. Un bandeau le rappelle dans l’admin.
+Sans Turso, le site fonctionne quand même (base dans `/tmp`) mais les modifications de l’admin sont
+perdues au redémarrage ; sans Blob, ce sont les photos/vidéos envoyées. Un bandeau le signale dans l’admin.
+`TRUST_PROXY` et `SECURE_COOKIES` sont activés automatiquement sur Vercel.
 
-1. Poussez le dépôt sur GitHub, puis *Vercel › Add New › Project* et importez-le
-   (framework **Next.js** détecté, commandes par défaut : `npm install`, `next build`).
-2. *Settings › Environment Variables* : `ADMIN_EMAIL` et `ADMIN_PASSWORD` (sans elles, `/admin` est
-   verrouillé par un mot de passe aléatoire), et éventuellement `SITE_URL` (voir `.env.example`).
-3. *Settings › General › Node.js Version* : **22.x** ou plus récent (module `node:sqlite` requis).
-4. Déployez. `TRUST_PROXY` et `SECURE_COOKIES` sont activés automatiquement sur Vercel.
+### Connexion administratrice
+Sur `/admin` : **numéro de téléphone** (ou e-mail) + mot de passe. Le mot de passe défini par
+`ADMIN_PASSWORD` est appliqué au démarrage suivant chaque changement de cette variable ; il peut aussi
+être changé dans *Admin › Paramètres › Sécurité* (avec le téléphone et l’e-mail de connexion).
 
-> Pour un back-office permanent sur Vercel, il faudrait remplacer SQLite par une base hébergée
-> (Turso, Vercel Postgres…) et les envois de photos par Vercel Blob : c’est une évolution à part entière.
+### Les deux fondatrices sur WhatsApp
+*Admin › Paramètres › WhatsApp de l’équipe* : prénom et numéro des deux fondatrices.
+- Chaque demande (commande, rendez-vous, sur-mesure, atelier, message…) s’ouvre dans le WhatsApp de la 1re ;
+  l’écran de confirmation propose d’un clic de l’envoyer aussi à la 2de.
+- **Copie automatique aux deux** (même si la cliente n’appuie pas sur Envoyer) : chaque fondatrice active
+  une fois le service gratuit [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/)
+  depuis son téléphone et colle sa clé dans cette section ; le bouton « Envoyer un message de test » vérifie.
 
-### 6.2 Serveur VPS (données permanentes)
+### 6.2 Serveur VPS (alternative)
 
-Recommandé pour utiliser pleinement l’admin : un petit serveur VPS (Ubuntu) avec un nom de domaine.
+Possible aussi : un petit serveur VPS (Ubuntu) avec un nom de domaine (données dans `data/`).
 
 ```bash
 # Sur le serveur

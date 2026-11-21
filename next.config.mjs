@@ -8,7 +8,8 @@ const CSP = [
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob: https:",
   'frame-src https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://www.google.com https://maps.google.com',
-  `connect-src 'self'${dev ? ' ws:' : ''}`,
+  // vercel.com/api/blob : envoi direct des photos et vidéos de l'admin vers Vercel Blob.
+  `connect-src 'self' https://vercel.com https://*.blob.vercel-storage.com${dev ? ' ws:' : ''}`,
   "base-uri 'self'", "form-action 'self'", "frame-ancestors 'self'", "object-src 'none'",
 ].join('; ');
 

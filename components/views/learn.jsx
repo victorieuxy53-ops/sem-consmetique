@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, cap, CUSTOM_TYPES, cx, discount, fdate, fdur, fshort, go, money, openModal, pct, settings, todayStr, toast, waMain, whatsappRelay } from '@/lib/core';
 
-import { AuthForms, Btn, Cover, CourseCard, DarkHeader, DateBox, Empty, Icon, Input, MomoBlock, PageHero, Paras, Pill, SecHead, Select, Split, SuccessCheck, authModal, confirmBox, useApp, useSubmit } from '../ui';
+import { AuthForms, Btn, Cover, CourseCard, DarkHeader, DateBox, Empty, Icon, Input, MomoBlock, PageHero, Paras, Pill, SecHead, Select, Split, SuccessCheck, WaTeam, authModal, confirmBox, useApp, useSubmit } from '../ui';
 import { Timeline } from './site';
 
 const Perk = ({ ic, t, s }) => <div><Icon n={ic} /><strong>{t}</strong><span>{s}</span></div>;
@@ -58,7 +58,7 @@ function PayForm({ c, onDone }) {
   if (r) return (
     <div className="success"><SuccessCheck /><h3>Merci ! Paiement transmis</h3><p>Référence <strong className="ref">{r.ref}</strong></p>
       <p className="muted">Nous vérifions votre transaction et activons votre accès très rapidement. Vous pouvez accélérer en nous envoyant la capture de paiement.</p>
-      <a className="btn btn-wa" target="_blank" rel="noopener" href={r.url}><Icon n="whatsapp" /> Envoyer ma capture sur WhatsApp</a></div>
+      <WaTeam url={r.url} /></div>
   );
   return (
     <div className="pay">

@@ -447,7 +447,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 500; line-height: 1.1; }
 
 /* ================================================== responsive (global) */
 @media (max-width: 1280px) {
-  .hdr__call-txt { display: none; } .hdr__call { padding: 4px; margin-right: 0; }
+  .hdr__call { padding: 4px; margin-right: 0; } .hdr__call-txt { display: none; }
   .nav > a, .nav__more-btn { padding: 10px 10px; }
 }
 @media (max-width: 1100px) {

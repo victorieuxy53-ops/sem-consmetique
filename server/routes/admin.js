@@ -6,6 +6,7 @@ import * as db from '../db.js';
 import { get, post, put, del, fail, HttpError } from '../http.js';
 import * as A from '../auth.js';
 import * as U from '../util.js';
+import * as N from '../notify.js';
 
 /* ---------------------------------------------------- ressources CRUD */
 const R = {
@@ -15,7 +16,7 @@ const R = {
   },
   products: {
     table: 'products', slugFrom: 'name', order: 'id DESC',
-    f: { name: 's140!', slug: 'slug', category: 's40', brand: 's80', short: 's300', description: 't', usage: 't', price: 'i!', compare_price: 'i', bulk_qty: 'i', bulk_price: 'i', stock: 'i', image: 's400', art: 's20', color: 's20', tags: 's200', featured: 'b', active: 'b' },
+    f: { name: 's140!', slug: 'slug', category: 's40', brand: 's80', short: 's300', description: 't', usage: 't', price: 'i!', compare_price: 'i', bulk_qty: 'i', bulk_price: 'i', stock: 'i', image: 's400', images: 't', video: 's500', art: 's20', color: 's20', tags: 's200', featured: 'b', active: 'b' },
   },
   courses: {
     table: 'courses', slugFrom: 'title', order: 'id DESC',
@@ -94,12 +95,22 @@ async function resource(ctx) {
   return r;
 }
 
+/** Adresse de média acceptée : Vercel Blob / https, ou fichier du site (/uploads, /assets). */
+const mediaUrl = (u) => typeof u === 'string' && /^(https:\/\/|\/(uploads|assets)\/)[^\s"'<>]+$/.test(u);
+
 function readFields(r, body, partial) {
   const out = {};
   for (const [k, spec] of Object.entries(r.f)) {
     if (partial && !(k in body)) continue;
     out[k] = U.coerce(spec, body[k], k);
   }
+  // Photos supplémentaires d'un produit : tableau JSON d'adresses (12 maximum).
+  if ('images' in out) {
+    let list = [];
+    try { list = JSON.parse(out.images || '[]'); } catch { /* ignore */ }
+    out.images = JSON.stringify((Array.isArray(list) ? list : []).filter(mediaUrl).slice(0, 12));
+  }
+  for (const k of ['image', 'video']) if (out[k] && !mediaUrl(out[k])) fail(400, `Adresse de ${k === 'video' ? 'vidéo' : 'photo'} invalide.`);
   return out;
 }
 
@@ -275,6 +286,7 @@ get('/api/admin/stats', async (ctx) => {
     recent_orders: await db.all('SELECT id, ref, name, total, status, created_at FROM orders ORDER BY id DESC LIMIT 5'),
     default_password: !!await db.get("SELECT 1 FROM settings WHERE key = 'admin_default_pw'"),
     ephemeral: db.EPHEMERAL,
+    media_ephemeral: db.MEDIA_EPHEMERAL,
   };
 });
 
@@ -285,7 +297,29 @@ get('/api/admin/options', async (ctx) => {
     courses: await db.all('SELECT id, title, price FROM courses ORDER BY id DESC'),
     users: await db.all('SELECT id, name, email FROM users ORDER BY name'),
     events: await db.all('SELECT id, title, date FROM events ORDER BY date DESC'),
+    // Où partent les photos/vidéos envoyées : Vercel Blob (envoi direct depuis le navigateur) ou disque du serveur.
+    storage: { blob: db.BLOB, persistent: !db.EPHEMERAL, media_persistent: !db.MEDIA_EPHEMERAL },
   };
+});
+
+/* ------------------------------------------- notifications WhatsApp de l'équipe */
+const mask = (k) => (k ? '•'.repeat(Math.max(0, String(k).length - 3)) + String(k).slice(-3) : '');
+get('/api/admin/notify', async (ctx) => {
+  await A.requireAdmin(ctx);
+  const k = await N.getKeys();
+  return { key1: mask(k.key1), key2: mask(k.key2), set1: !!k.key1, set2: !!k.key2 };
+});
+put('/api/admin/notify', async (ctx) => {
+  await A.requireAdmin(ctx);
+  const b = await ctx.json(), k = await N.getKeys();
+  // Champ laissé masqué (•••123) = clé inchangée ; champ vidé = clé supprimée.
+  for (const n of ['key1', 'key2']) if (n in b && !/^•+/.test(String(b[n] || ''))) k[n] = U.str(b[n], 60) || undefined;
+  await N.saveKeys(k);
+  return { ok: true, key1: mask(k.key1), key2: mask(k.key2), set1: !!k.key1, set2: !!k.key2 };
+});
+post('/api/admin/notify/test', async (ctx) => {
+  await A.requireAdmin(ctx);
+  return { results: await N.sendNow(`✅ Test réussi : les demandes du site ${db.settings().site_name} arriveront ici.`) };
 });
 
 /* ------------------------------------------------------------ paramètres */

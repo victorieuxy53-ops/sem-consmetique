@@ -236,7 +236,12 @@ export const DEFAULT_SETTINGS = {
   founder_image: '/assets/img/sem/ella-sodonon.jpg',
   founder_quote: 'Je crée chaque soin comme je l’offrirais à une amie : avec exigence, douceur et le désir sincère de vous voir rayonner.',
   phones: ['01 63 40 35 39', '01 97 04 52 83'],
+  // Les deux fondatrices : chaque demande s'ouvre dans le WhatsApp de la 1re et peut être envoyée aussi à la 2de
+  // (boutons), et une copie automatique part vers les deux si les notifications CallMeBot sont activées.
   whatsapp: '01 63 40 35 39',
+  whatsapp_name: 'Ella',
+  whatsapp2: '01 97 04 52 83',
+  whatsapp2_name: 'Co-fondatrice',
   country_code: '229',
   email: '',
   address: '',

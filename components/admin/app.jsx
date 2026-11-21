@@ -92,7 +92,7 @@ export function AdminShell({ children }) {
         <nav className="adm__nav">{NAV.map(([g, items]) => (
           <div className="adm__group" key={g}><span>{g}</span>{items.map(([h, l, i, c]) => (
             <A key={h} href={h} className={path === h ? 'active' : undefined}><Icon n={i} /><em>{l}</em>{c && <b className="badge-n" hidden={!counts[c]}>{counts[c]}</b>}</A>))}</div>))}</nav>
-        <div className="adm__me"><span className="avatar">{initials(u.name)}</span><span><strong>{u.name}</strong><small>{u.email}</small></span><button className="icon-btn sm" onClick={logout} title="Déconnexion"><Icon n="logout" /></button></div>
+        <div className="adm__me"><span className="avatar">{initials(u.name)}</span><span><strong>{u.name}</strong><small>{/@(institut|sem-cosmetique)\.local$/.test(u.email) ? u.phone || u.email : u.email}</small></span><button className="icon-btn sm" onClick={logout} title="Déconnexion"><Icon n="logout" /></button></div>
       </aside>
       <div className="adm__scrim" onClick={() => setSide(false)} />
       <div className="adm__main">
@@ -140,6 +140,7 @@ export function Dashboard() {
   const Card = ({ title, link, side, wide, children }) => <section className={cx('card dcard', wide && 'dcard--wide')}><div className="dcard__head">{typeof title === 'string' ? <h3>{title}</h3> : title}{link && <A href={link[0]} className="link-arrow small">{link[1]} <Icon n="arrow" /></A>}{side}</div>{children}</section>;
   return <>
     {d.default_password && <A href="/settings" className="alert-bar"><Icon n="alert" /><span><strong>Sécurité :</strong> vous utilisez encore le mot de passe par défaut. Changez-le maintenant dans Paramètres › Sécurité.</span><Icon n="arrow" /></A>}
+    {!d.ephemeral && d.media_ephemeral && <div className="alert-bar" role="note"><Icon n="image" /><span><strong>Photos et vidéos non permanentes :</strong> connectez le stockage Vercel Blob au projet pour que les photos et vidéos envoyées d’ici restent en ligne (voir le README).</span></div>}
     {d.ephemeral && <div className="alert-bar" role="note"><Icon n="info" /><span><strong>Hébergement sans stockage permanent (ex. Vercel) :</strong> les modifications faites ici (produits, prix, paramètres, photos envoyées) et les demandes reçues sont effacées au prochain redémarrage du serveur. Les demandes des clientes vous parviennent toujours sur WhatsApp. Pour un back-office permanent, voir le README (« Mettre le site en ligne »).</span></div>}
     <div className="dash-head"><div><h2>{h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir'}, {user.name.split(' ')[0]}</h2><p className="muted">{cap(fdate(d.today, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</p></div>
       <div className="row-wrap"><A className="btn btn-ghost btn-sm" href="/agenda"><Icon n="calendar" /> Agenda</A><button className="btn btn-primary btn-sm" onClick={() => newBooking({}, () => setN(n + 1))}><Icon n="plus" /> Rendez-vous téléphonique</button></div></div>
@@ -244,7 +245,39 @@ function bookingModal(b, done) {
 }
 
 /* ============================================================== PARAMÈTRES */
-const SECTIONS = [['id', 'Identité & textes', 'edit'], ['ct', 'Contact & réseaux', 'phone'], ['hr', 'Horaires', 'clock'], ['bk', 'Réservations', 'calendar'], ['py', 'Paiement & livraison', 'wallet'], ['st', 'Chiffres clés', 'chart'], ['sec', 'Sécurité', 'lock']];
+const SECTIONS = [['id', 'Identité & textes', 'edit'], ['wa', 'WhatsApp de l’équipe', 'whatsapp'], ['ct', 'Contact & réseaux', 'phone'], ['hr', 'Horaires', 'clock'], ['bk', 'Réservations', 'calendar'], ['py', 'Paiement & livraison', 'wallet'], ['st', 'Chiffres clés', 'chart'], ['sec', 'Sécurité', 'lock']];
+
+/** Notifications automatiques (CallMeBot) : une clé par fondatrice, gardée côté serveur. */
+function NotifyKeys() {
+  const [k, setK] = useState(null), [busy, setBusy] = useState(''), [res, setRes] = useState(null);
+  useEffect(() => { api('/api/admin/notify').then(setK, () => setK({})); }, []);
+  if (!k) return null;
+  const save = async () => {
+    setBusy('save');
+    try { setK(await api('/api/admin/notify', { method: 'PUT', body: { key1: document.getElementById('cmb1').value.trim(), key2: document.getElementById('cmb2').value.trim() } })); toast('Clés de notification enregistrées'); }
+    catch (e) { toast(e.message, 'err'); }
+    setBusy('');
+  };
+  const test = async () => {
+    setBusy('test'); setRes(null);
+    try { setRes((await api('/api/admin/notify/test', { method: 'POST', body: {} })).results); } catch (e) { toast(e.message, 'err'); }
+    setBusy('');
+  };
+  return (
+    <div className="notif">
+      <h4><Icon n="bell" /> Copie automatique sur les deux WhatsApp</h4>
+      <p className="muted small">Pour recevoir chaque demande sur les DEUX téléphones, même si la cliente n’appuie pas sur « Envoyer » : chaque fondatrice active une fois le service gratuit <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">CallMeBot</a> depuis son téléphone (ajouter le numéro du robot indiqué sur cette page à ses contacts, lui écrire sur WhatsApp « I allow callmebot to send me messages »), puis colle ici la clé (APIKEY) reçue.</p>
+      <div className="aform__grid">
+        <label className="field"><input id="cmb1" defaultValue={k.key1} placeholder=" " autoComplete="off" /><span>Clé CallMeBot (1re fondatrice)</span></label>
+        <label className="field"><input id="cmb2" defaultValue={k.key2} placeholder=" " autoComplete="off" /><span>Clé CallMeBot (2de fondatrice)</span></label>
+      </div>
+      <div className="row-wrap"><Btn type="button" busy={busy === 'save'} className="btn btn-ghost btn-sm" onClick={save}><Icon n="check" /> Enregistrer les clés</Btn>
+        <Btn type="button" busy={busy === 'test'} className="btn btn-ghost btn-sm" onClick={test} disabled={!k.set1 && !k.set2}><Icon n="send" /> Envoyer un message de test</Btn>
+        <span className={cx('pill', k.set1 || k.set2 ? 'pill--ok' : 'pill--warn')}>{k.set1 && k.set2 ? 'Activé pour les deux' : k.set1 || k.set2 ? 'Activé pour une seule' : 'Non activé'}</span></div>
+      {res && <ul className="notif__res">{res.map((r) => <li key={r.name} className={r.ok ? 'ok' : 'ko'}><Icon n={r.ok ? 'check' : 'alert'} /> {r.name} : {r.ok ? 'message envoyé' : r.error}</li>)}</ul>}
+    </div>
+  );
+}
 
 export function Settings() {
   const { user } = useApp();
@@ -266,7 +299,7 @@ export function Settings() {
     const body = {
       site_name: v('site_name'), tagline: v('tagline'), slogan: v('slogan'), hero_title: v('hero_title'), hero_sub: v('hero_sub'), about_story: v('about_story'), hero_image: v('hero_image'), hero_video: v('hero_video'), about_image: v('about_image'),
       founder_name: v('founder_name'), founder_role: v('founder_role'), founder_quote: v('founder_quote'), founder_image: v('founder_image'),
-      phones: phones.map((p) => p.trim()).filter(Boolean), whatsapp: v('whatsapp'), country_code: v('country_code'), email: v('email'), city: v('city'), address: v('address'), map_embed: v('map_embed'),
+      phones: phones.map((p) => p.trim()).filter(Boolean), whatsapp: v('whatsapp'), whatsapp_name: v('whatsapp_name'), whatsapp2: v('whatsapp2'), whatsapp2_name: v('whatsapp2_name'), country_code: v('country_code'), email: v('email'), city: v('city'), address: v('address'), map_embed: v('map_embed'),
       facebook: v('facebook'), instagram: v('instagram'), tiktok: v('tiktok'), hours, tz_offset: +v('tz_offset') || 0,
       capacity: Math.max(1, +v('capacity') || 1), slot_interval: +v('slot_interval') || 30, min_advance: +v('min_advance') || 0, max_days: +v('max_days') || 60,
       closed_dates: closed, momo: momo.map((m) => ({ network: (m.network || '').trim(), number: (m.number || '').trim(), name: (m.name || '').trim() })).filter((m) => m.number),
@@ -297,11 +330,16 @@ export function Settings() {
           {F('founder_quote', 'Fondatrice : citation', 'textarea', { full: 1, rows: 2 })}
           {F('founder_image', 'Fondatrice : photo', 'image', { help: 'Portrait, idéalement carré ou vertical.' })}
         </div></section>
+        <section className="card" id="s-wa"><h3><Icon n="whatsapp" /> WhatsApp de l’équipe</h3>
+          <p className="muted small">Chaque commande, réservation ou message s’ouvre dans le WhatsApp de la 1re fondatrice ; la cliente peut l’envoyer aussi à la 2de en un clic, et une copie automatique part vers les deux si les notifications ci-dessous sont activées.</p>
+          <div className="aform__grid">{F('whatsapp_name', 'Prénom (1re fondatrice)')}{F('whatsapp', 'Numéro WhatsApp (1re fondatrice)', 'text', { req: 1 })}
+            {F('whatsapp2_name', 'Prénom (2de fondatrice)')}{F('whatsapp2', 'Numéro WhatsApp (2de fondatrice)', 'text', { help: 'Laisser vide pour n’utiliser qu’un seul numéro.' })}</div>
+          <NotifyKeys /></section>
         <section className="card" id="s-ct"><h3><Icon n="phone" /> Contact & réseaux</h3>
           <div className="list-edit"><label className="fl">Numéros de téléphone (appel direct)</label>
             {phones.map((p, i) => <div className="le-row" key={i}><input className="inp" value={p} placeholder="01 00 00 00 00" onChange={(e) => upd(phones, setPhones, i, e.target.value)} /><button type="button" className="icon-btn sm danger" onClick={() => setPhones(phones.filter((_, j) => j !== i))}><Icon n="trash" /></button></div>)}
             <button type="button" className="btn btn-ghost btn-xs" onClick={() => setPhones([...phones, ''])}><Icon n="plus" /> Ajouter un numéro</button></div>
-          <div className="aform__grid mt">{F('whatsapp', 'Numéro WhatsApp')}{F('country_code', 'Indicatif pays', 'text', { help: 'Bénin : 229' })}{F('email', 'E-mail', 'email')}{F('city', 'Ville / pays')}
+          <div className="aform__grid mt">{F('country_code', 'Indicatif pays', 'text', { help: 'Bénin : 229' })}{F('email', 'E-mail', 'email')}{F('city', 'Ville / pays')}
             {F('address', 'Adresse (quartier, repère)', 'text', { full: 1 })}
             {F('map_embed', 'Carte Google Maps', 'textarea', { full: 1, rows: 2, help: 'Google Maps › Partager › Intégrer une carte › copiez le code <iframe> ici.' })}
             {F('facebook', 'Lien Facebook', 'url')}{F('instagram', 'Lien Instagram', 'url')}{F('tiktok', 'Lien TikTok', 'url')}</div></section>

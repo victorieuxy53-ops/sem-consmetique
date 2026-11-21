@@ -4,8 +4,8 @@ import { createContext, Fragment, useContext, useEffect, useId, useLayoutEffect,
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
-  api, cap, cart, cartStore, CATS, closeModal, copy, cx, discount, fdate, fdur, formData, fshort, hasBulk, initials, lockScroll, md, modals,
-  money, openModal, PCATS, pct, savedContact, saveContact, setSettings, settings, STATUS, toast, toasts, useStore, whatsappRelay,
+  api, cap, cart, cartStore, CATS, closeModal, copy, cx, discount, fdate, fdur, formData, fshort, hasBulk, initials, lockScroll, md, modals, productImages,
+  money, openModal, PCATS, pct, savedContact, saveContact, setSettings, settings, STATUS, toast, toasts, useStore, waHref, waMain, waTeam, whatsappRelay,
 } from '@/lib/core';
 import { flyToCart, reduce } from '@/lib/fx';
 
@@ -155,11 +155,16 @@ export function ProductArt({ kind = 'jar', color = '#c49a5a' }) {
   return <svg className="art" viewBox="0 0 200 240" aria-hidden="true" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-export const ProductVisual = ({ p, className }) => (
-  <div className={cx('pv', className)} style={{ '--c': safeColor(p.color) }}>
-    {p.image ? <img src={p.image} alt={p.name} loading="lazy" /> : <ProductArt kind={p.art} color={p.color} />}
-  </div>
-);
+/** Visuel produit ; `hover` : la 2e photo apparaît au survol (cartes de la boutique). */
+export const ProductVisual = ({ p, className, hover }) => {
+  const second = hover ? productImages(p)[1] : null;
+  return (
+    <div className={cx('pv', second && 'pv--swap', className)} style={{ '--c': safeColor(p.color) }}>
+      {p.image ? <img src={p.image} alt={p.name} loading="lazy" /> : <ProductArt kind={p.art} color={p.color} />}
+      {second && <img className="pv__alt" src={second} alt="" loading="lazy" />}
+    </div>
+  );
+};
 
 /** Emblème SEM Cosmétique : feuilles roses + profil féminin, dans un cercle. */
 export const LogoMark = ({ className }) => (
@@ -409,8 +414,8 @@ export function ProductCard({ p, style }) {
   return (
     <article className="pcard" style={style}>
       <a href={`/boutique/${p.slug}`} className="pcard__media">
-        <ProductVisual p={p} />
-        <div className="pcard__badges">{off > 0 && <span className="badge badge--gold">-{off}%</span>}{!!p.featured && <span className="badge">Coup de cœur</span>}
+        <ProductVisual p={p} hover />
+        <div className="pcard__badges">{off > 0 && <span className="badge badge--gold">-{off}%</span>}{!!p.featured && <span className="badge">Coup de cœur</span>}{p.video && <span className="badge badge--video"><Icon n="play" /> Vidéo</span>}
           {out ? <span className="badge badge--dark">Épuisé</span> : low && <span className="badge badge--warn">Plus que {p.stock}</span>}</div>
       </a>
       <div className="pcard__body">
@@ -531,6 +536,21 @@ export const confirmBox = (text, { ok = 'Confirmer', danger = false } = {}) => n
   });
 });
 
+/** Boutons WhatsApp vers chaque fondatrice : le message s'est ouvert chez la 1re, la 2de le reçoit en un clic.
+    `url` = lien WhatsApp déjà ouvert (le texte en est extrait) ou `text` = message. */
+export function WaTeam({ url, text, small }) {
+  const msg = text ?? (() => { try { return new URL(url).searchParams.get('text') || ''; } catch { return ''; } })();
+  const team = waTeam();
+  const size = small ? ' btn-sm' : '';
+  if (team.length < 2) return <a className={'btn btn-wa' + size} target="_blank" rel="noopener" href={waMain(msg)}><Icon n="whatsapp" /> Rouvrir WhatsApp</a>;
+  return (
+    <div className="wa-team">
+      <a className={'btn btn-wa' + size} target="_blank" rel="noopener" href={waHref(team[1].phone, msg)}><Icon n="whatsapp" /> Envoyer aussi à {team[1].name}</a>
+      <a className={'btn btn-ghost' + size} target="_blank" rel="noopener" href={waHref(team[0].phone, msg)}><Icon n="whatsapp" /> Rouvrir chez {team[0].name}</a>
+    </div>
+  );
+}
+
 export function CallbackForm({ title = 'Être rappelée gratuitement' }) {
   const [done, setDone] = useState(null);
   const [submit, busy] = useSubmit(async (d) => {
@@ -541,7 +561,7 @@ export function CallbackForm({ title = 'Être rappelée gratuitement' }) {
   return (
     <form className="callback card" onSubmit={submit}>
       {done ? <div className="success-mini"><Icon n="check" /><h3>Presque fini !</h3><p className="muted">Envoyez le message ouvert dans WhatsApp : nous vous rappelons {done.when.toLowerCase()} au {done.phone}.</p>
-        <a href={done.url} target="_blank" rel="noopener" className="btn btn-wa btn-sm"><Icon n="whatsapp" /> Rouvrir WhatsApp</a></div> : <>
+        <WaTeam url={done.url} small /></div> : <>
         <span className="callback__ic"><Icon n="phone" /></span>
         <h3>{title}</h3><p className="muted small">Laissez votre numéro : la demande part sur notre WhatsApp et une conseillère vous rappelle rapidement.</p>
         <Input label="Votre prénom" name="name" required autoComplete="name" />
@@ -590,7 +610,7 @@ function EventForm({ e }) {
       <p>Référence <strong className="ref">{done.ref}</strong></p>
       <p className="muted">{done.status === 'confirmed' ? 'Votre inscription est confirmée. À très vite !' : `Nous vous recontactons pour confirmer votre inscription${done.total ? ` (total ${money(done.total)})` : ''}.`}</p>
       <p className="wa-sent"><Icon n="whatsapp" /> WhatsApp s’est ouvert : appuyez sur <strong>Envoyer</strong> pour nous transmettre votre réservation.</p>
-      <a className="btn btn-wa" target="_blank" rel="noopener" href={done.url}><Icon n="whatsapp" /> Rouvrir WhatsApp</a></div>
+      <WaTeam url={done.url} /></div>
   );
   return <>
     <p className="muted"><Icon n="calendar" /> {cap(fdate(e.date))} · {e.time}{e.end_time && ` à ${e.end_time}`} · {e.location || `Chez ${settings().site_name}`}</p>

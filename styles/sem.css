@@ -50,9 +50,39 @@ main, #footer { overflow-x: clip; }
 .wa-sent { display: flex; gap: 10px; align-items: flex-start; max-width: 60ch; padding: 12px 16px; margin: 6px auto; border-radius: 14px; background: #e3f3ea; color: var(--ok); text-align: left; font-size: .93rem; line-height: 1.45; }
 .wa-sent > .i { margin-top: 2px; flex: none; }
 .ft__news .btn-wa { margin-top: 4px; }
+/* fiche produit : galerie photos + vidéo */
+.product__stage .slides__arrow { z-index: 2; }
+.product__stage:hover .slides__arrow, .product__stage .slides__arrow:focus-visible { opacity: 1; }
+.pv__in { animation: pvIn .5s var(--ease) both; }
+@keyframes pvIn { from { opacity: 0; transform: scale(1.02); } to { opacity: 1; transform: none; } }
+.pv--video { background: var(--tone-9); }
+.pv--video video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--tone-9); }
+.pthumbs { display: flex; gap: 10px; margin-top: 14px; overflow-x: auto; scrollbar-width: none; padding: 4px 2px; }
+.pthumbs::-webkit-scrollbar { display: none; }
+.pthumb { position: relative; flex: none; width: 74px; aspect-ratio: 4 / 5; border-radius: 12px; overflow: hidden; background: var(--sand-2); border: 2px solid transparent; opacity: .72; transition: opacity .3s, border-color .3s, transform .3s var(--ease); }
+.pthumb img { width: 100%; height: 100%; object-fit: cover; }
+.pthumb:hover { opacity: 1; transform: translateY(-2px); }
+.pthumb.on { opacity: 1; border-color: var(--accent); }
+.pthumb__play { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 2px; color: #fff; background: rgba(14, 23, 54, .55); font-size: .66rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.pthumb__play .i { width: 20px; height: 20px; }
+
+/* cartes produit : 2e photo au survol, badge vidéo */
+.pv--swap .pv__alt { opacity: 0; transition: opacity .6s var(--ease), transform 1.2s var(--ease); }
+.pcard:hover .pv--swap .pv__alt { opacity: 1; }
+.badge--video { display: inline-flex; align-items: center; gap: 4px; background: var(--tone-8); color: #fff; }
+.badge--video .i { width: 11px; height: 11px; }
+
+/* boutons WhatsApp vers les deux fondatrices */
+.wa-team { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
+.wa-sent--box { margin: 4px 0 0; max-width: none; } .wa-sent--box strong { color: var(--ok); }
+.wa-sent--box .wa-team { justify-content: flex-start; }
 @media (max-width: 480px) {
   .seg--wide button { white-space: nowrap; padding: 10px 10px; font-size: .86rem; gap: 6px; }
 }
+
+/* en-tête : jamais un libellé sur deux lignes ; le numéro d'appel passe en icône seule avant que ça ne serre */
+.nav > a, .nav__more-btn, .hdr__call-txt { white-space: nowrap; }
+@media (max-width: 1440px) { .hdr__call { padding: 4px; margin-right: 0; } .hdr__call-txt { display: none; } }
 
 /* barre de chargement entre deux pages */
 .navprog { position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 3px; background: var(--grad-rose); box-shadow: 0 0 10px rgba(214, 51, 111, .6);

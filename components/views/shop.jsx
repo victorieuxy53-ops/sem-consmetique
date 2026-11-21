@@ -1,9 +1,9 @@
 'use client';
 /* Boutique, fiche produit, commande, sur-mesure, suivi. */
 import { useEffect, useRef, useState } from 'react';
-import { api, cap, cart, CUSTOM_TYPES, cx, discount, fdate, fdatetime, hasBulk, imageToDataUrl, money, PCATS, saveContact, settings, STATUS, toast, unitPrice, useCart, waMain, whatsappRelay } from '@/lib/core';
+import { api, cap, cart, CUSTOM_TYPES, cx, discount, fdate, fdatetime, hasBulk, imageToDataUrl, money, PCATS, productImages, saveContact, settings, STATUS, toast, unitPrice, useCart, waMain, whatsappRelay } from '@/lib/core';
 import {
-  addToCart, Area, Btn, Empty, Icon, Input, Md, MomoBlock, PageHero, Pill, ProductCard, ProductVisual, Qty, RadioCard, SecHead, Seg, Select, Split, SuccessCheck, pop, useContact, useSubmit,
+  addToCart, Area, Btn, Empty, Icon, Input, Md, MomoBlock, PageHero, Pill, ProductCard, ProductVisual, Qty, RadioCard, SecHead, Seg, Select, Split, SuccessCheck, WaTeam, pop, useContact, useSubmit,
 } from '../ui';
 
 /* ================================================================ BOUTIQUE */
@@ -35,6 +35,36 @@ export function Shop({ products, cat: cat0 }) {
 }
 
 /* =========================================================== FICHE PRODUIT */
+/** Galerie de la fiche produit : photo principale, autres photos et vidéo, avec vignettes. */
+function ProductMedia({ p, off }) {
+  const imgs = productImages(p);
+  const items = [...imgs.map((src) => ({ type: 'img', src })), ...(p.video ? [{ type: 'video', src: p.video }] : [])];
+  const [i, setI] = useState(0);
+  const cur = items[i];
+  const go = (d) => setI((x) => (x + d + items.length) % items.length);
+  const touch = useRef(null);
+  return (
+    <div className="product__media" data-reveal="zoom">
+      <div className="product__stage" style={{ '--c': p.color }}
+        onTouchStart={(e) => { touch.current = e.touches[0].clientX; }}
+        onTouchEnd={(e) => { const dx = e.changedTouches[0].clientX - (touch.current ?? 0); if (items.length > 1 && Math.abs(dx) > 40 && cur?.type !== 'video') go(dx < 0 ? 1 : -1); }}>
+        {!cur ? <ProductVisual p={p} className="pv--xl" />
+          : cur.type === 'video' ? <div className="pv pv--xl pv--video"><video key={cur.src} src={cur.src} poster={imgs[0]} controls playsInline preload="metadata" autoPlay muted /></div>
+          : <div className="pv pv--xl"><img key={cur.src} className="pv__in" src={cur.src} alt={p.name} /></div>}
+        {items.length > 1 && <>
+          <button type="button" className="slides__arrow slides__arrow--prev" onClick={() => go(-1)} aria-label="Photo précédente"><Icon n="chevL" /></button>
+          <button type="button" className="slides__arrow slides__arrow--next" onClick={() => go(1)} aria-label="Photo suivante"><Icon n="chevR" /></button>
+        </>}
+      </div>
+      {off > 0 && <span className="badge badge--gold product__off">-{off}%</span>}
+      {items.length > 1 && <div className="pthumbs">{items.map((it, k) => (
+        <button key={it.src} type="button" className={cx('pthumb', k === i && 'on')} onClick={() => setI(k)} aria-label={it.type === 'video' ? 'Voir la vidéo' : `Photo ${k + 1}`} aria-current={k === i}>
+          {it.type === 'video' ? <>{imgs[0] && <img src={imgs[0]} alt="" />}<span className="pthumb__play"><Icon n="play" /><small>Vidéo</small></span></> : <img src={it.src} alt="" loading="lazy" />}
+        </button>))}</div>}
+    </div>
+  );
+}
+
 export function Product({ product: p, related }) {
   const s = settings();
   const off = discount(p), out = p.stock !== null && p.stock <= 0, max = p.stock === null ? 99 : Math.max(1, p.stock);
@@ -45,8 +75,7 @@ export function Product({ product: p, related }) {
     <section className="product-page"><div className="container">
       <nav className="crumbs" data-reveal><a href="/">Accueil</a><span>/</span><a href="/boutique">Boutique</a><span>/</span><a href={`/boutique?cat=${p.category}`}>{PCATS[p.category] || p.category}</a></nav>
       <div className="product">
-        <div className="product__media" data-reveal="zoom"><div className="product__stage" style={{ '--c': p.color }}><ProductVisual p={p} className="pv--xl" /></div>
-          {off > 0 && <span className="badge badge--gold product__off">-{off}%</span>}</div>
+        <ProductMedia p={p} off={off} />
         <div className="product__info">
           <span className="pcard__cat" data-reveal>{PCATS[p.category]}{p.brand && ` · ${p.brand}`}</span>
           <Split as="h1" className="h1 h1--product" text={p.name} />
@@ -114,7 +143,7 @@ export function Checkout() {
       <p>Référence <strong className="ref">{done.ref}</strong> · Total <strong>{money(done.total)}</strong></p>
       <p className="wa-sent"><Icon n="whatsapp" /> WhatsApp s’est ouvert avec le détail de votre commande : appuyez sur <strong>Envoyer</strong> pour nous la transmettre.</p>
       <p className="muted">{delivery === 'livraison' ? 'Nous vous recontactons sur WhatsApp pour convenir de la livraison.' : 'Nous vous prévenons sur WhatsApp dès que votre commande est prête à être retirée.'}</p>
-      <div className="row-wrap center"><a className="btn btn-wa" target="_blank" rel="noopener" href={done.url}><Icon n="whatsapp" /> Rouvrir WhatsApp</a>
+      <div className="row-wrap center"><WaTeam url={done.url} />
         <a className="btn btn-ghost" href={`/suivi?ref=${encodeURIComponent(done.ref)}`}><Icon n="eye" /> Suivre ma commande</a><a className="btn btn-ghost" href="/boutique">Continuer mes achats</a></div></div>
   );
   else if (!items.length) body = <Empty text="Votre panier est vide pour le moment." icon="bag"><a href="/boutique" className="btn btn-primary">Découvrir la boutique</a></Empty>;
@@ -214,7 +243,7 @@ export function Custom({ type: t0 }) {
       {done ? <div className="success"><SuccessCheck /><h3>Demande envoyée !</h3><p>Référence <strong className="ref">{done.ref}</strong></p>
         <p className="wa-sent"><Icon n="whatsapp" /> WhatsApp s’est ouvert avec votre demande : appuyez sur <strong>Envoyer</strong> pour nous la transmettre.</p>
         <p className="muted">Nous étudions votre projet et revenons vers vous sur WhatsApp avec un devis sous 24 h ouvrées.</p>
-        <div className="row-wrap center"><a className="btn btn-wa" target="_blank" rel="noopener" href={done.url}><Icon n="whatsapp" /> Rouvrir WhatsApp</a><a href={`/suivi?ref=${encodeURIComponent(done.ref)}`} className="btn btn-ghost">Suivre ma demande</a></div></div> : <>
+        <div className="row-wrap center"><WaTeam url={done.url} /><a href={`/suivi?ref=${encodeURIComponent(done.ref)}`} className="btn btn-ghost">Suivre ma demande</a></div></div> : <>
         <h3 className="pane__title">1. Que souhaitez-vous ?</h3>
         <div className="types">{Object.entries(CUSTOM_TYPES).map(([k, [l, i]]) => <button type="button" key={k} className={cx('type', k === type && 'sel')} onClick={() => choose(k)}><span className="type__ic"><Icon n={i} /></span><span>{l}</span></button>)}</div>
         {type && <form className="stack" onSubmit={submit} key={type + (c.phone || '')}>

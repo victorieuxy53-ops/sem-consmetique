@@ -11,7 +11,7 @@ export async function refreshCounts() {
   try { const counts = await api('/api/admin/counts'); adm.set((v) => ({ ...v, counts })); return counts; } catch { return null; }
 }
 export async function loadOpts() {
-  try { const opts = await api('/api/admin/options'); adm.set((v) => ({ ...v, opts })); } catch { /* listes vides */ }
+  try { const opts = await api('/api/admin/options'); adm.set((v) => ({ ...v, opts })); return opts; } catch { return null; /* listes vides */ }
 }
 export const changed = () => { refreshCounts(); loadOpts(); };
 
@@ -21,7 +21,43 @@ export const Contact = ({ phone, msg }) => (phone ? <>
   <a className="icon-btn sm wa" target="_blank" rel="noopener" href={waHref(phone, msg)} title="Écrire sur WhatsApp"><Icon n="whatsapp" /></a></> : null);
 
 /* ------------------------------------------------------ envoi de fichiers */
-export function upload(file, onProgress, pub = false) {
+/** Photo prise au téléphone (souvent 4 à 12 Mo) : réduite à 2000 px de côté en JPEG de qualité avant l'envoi. */
+async function shrinkImage(file) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 900 * 1024) return file;
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const c = Object.assign(document.createElement('canvas'), { width: Math.round(bmp.width * k), height: Math.round(bmp.height * k) });
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); // fond blanc (PNG transparent)
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.86));
+    return blob && blob.size < file.size ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+  } catch { return file; }
+}
+const safeName = (n) => String(n).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.-]+/g, '-').slice(-60) || 'fichier';
+
+/**
+ * Envoie une photo ou une vidéo. En ligne avec Vercel Blob : envoi DIRECT du navigateur vers le stockage permanent
+ * (pas de limite de taille des fonctions serveur). Sinon : envoi au serveur (dossier data/uploads).
+ * Renvoie { url } (public) ou, pour une vidéo de leçon envoyée au serveur, { src } (fichier protégé).
+ */
+export async function upload(file, onProgress, pub = false) {
+  file = await shrinkImage(file);
+  const storage = adm.get().opts.storage || (await loadOpts())?.storage;
+  if (storage?.blob) {
+    const { upload: toBlob } = await import('@vercel/blob/client');
+    const vid = file.type.startsWith('video/');
+    const b = await toBlob(`${vid ? (pub ? 'videos' : 'lecons') : 'photos'}/${safeName(file.name)}`, file, {
+      access: 'public', handleUploadUrl: '/api/admin/blob', multipart: file.size > 8 * 1024 * 1024,
+      onUploadProgress: ({ percentage }) => onProgress?.(percentage / 100),
+    });
+    return vid && !pub ? { src: b.url, url: b.url, remote: true, size: file.size } : { url: b.url, size: file.size };
+  }
+  return uploadToServer(file, onProgress, pub);
+}
+
+function uploadToServer(file, onProgress, pub) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/admin/upload?name=' + encodeURIComponent(file.name) + (pub ? '&public=1' : ''));
@@ -52,10 +88,45 @@ function ImageField({ f, v }) {
   return (
     <div className="imgf full"><input type="hidden" name={f.k} value={url} />
       <div className="imgf__prev">{url ? (vid ? <video src={url} muted loop autoPlay playsInline /> : <img src={url} alt="" />) : <Icon n={vid ? 'video' : 'image'} />}</div>
-      <div className="imgf__body"><strong>{f.l}</strong><small>{f.help || 'JPG, PNG ou WEBP, 12 Mo maximum'}</small>
-        <div className="row-wrap"><label className="btn btn-ghost btn-sm"><Icon n="upload" /> {vid ? 'Choisir une vidéo' : 'Choisir une image'}<input type="file" accept={vid ? 'video/mp4,video/webm' : 'image/jpeg,image/png,image/webp,image/gif'} hidden onChange={pick} /></label>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setUrl('')}><Icon n="trash" /> Retirer</button></div>
-        {prog !== null && <div className="prog"><span style={{ width: Math.round(prog * 100) + '%' }} /></div>}</div>
+      <div className="imgf__body"><strong>{f.l}</strong><small>{f.help || 'Photo depuis le téléphone ou l’ordinateur (JPG, PNG, WEBP) : réduite automatiquement.'}</small>
+        <div className="row-wrap"><label className="btn btn-ghost btn-sm"><Icon n="upload" /> {vid ? 'Choisir une vidéo' : 'Choisir une photo'}<input type="file" accept={vid ? 'video/mp4,video/webm,video/quicktime' : 'image/*'} hidden onChange={pick} /></label>
+          {url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setUrl('')}><Icon n="trash" /> Retirer</button>}</div>
+        {prog !== null && <><div className="prog"><span style={{ width: Math.round(prog * 100) + '%' }} /></div><small>Envoi… {Math.round(prog * 100)} %</small></>}</div>
+    </div>
+  );
+}
+
+/** Plusieurs photos (galerie d'un produit) : ajout multiple, ordre, retrait. Valeur = tableau JSON d'adresses. */
+function ImagesField({ f, v }) {
+  const parse = (x) => { try { const a = JSON.parse(x || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+  const [list, setList] = useState(() => parse(v)), [prog, setProg] = useState(null);
+  const max = 12;
+  const pick = async (e) => {
+    const files = [...e.target.files].slice(0, max - list.length);
+    e.target.value = '';
+    for (const [i, file] of files.entries()) {
+      setProg({ n: i + 1, of: files.length, p: 0 });
+      try { const r = await upload(file, (p) => setProg({ n: i + 1, of: files.length, p })); setList((l) => [...l, r.url].slice(0, max)); }
+      catch (err) { toast(`${file.name} : ${err.message}`, 'err'); }
+    }
+    setProg(null);
+  };
+  const move = (i, d) => setList((l) => { const a = [...l], j = i + d; if (j < 0 || j >= a.length) return a; [a[i], a[j]] = [a[j], a[i]]; return a; });
+  return (
+    <div className="imgs full"><input type="hidden" name={f.k} value={JSON.stringify(list)} />
+      <div className="imgs__head"><strong>{f.l}</strong>{f.help && <small>{f.help}</small>}</div>
+      <div className="imgs__grid">
+        {list.map((u, i) => (
+          <figure key={u} className="imgs__item"><img src={u} alt="" />
+            <div className="imgs__act">
+              <button type="button" onClick={() => move(i, -1)} disabled={!i} aria-label="Avancer"><Icon n="chevL" /></button>
+              <button type="button" onClick={() => setList((l) => l.filter((x) => x !== u))} aria-label="Retirer"><Icon n="trash" /></button>
+              <button type="button" onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label="Reculer"><Icon n="chevR" /></button>
+            </div>
+          </figure>))}
+        {list.length < max && <label className="imgs__add"><Icon n="plus" /><span>Ajouter des photos</span><input type="file" accept="image/*" multiple hidden onChange={pick} disabled={!!prog} /></label>}
+      </div>
+      {prog && <><div className="prog"><span style={{ width: Math.round(prog.p * 100) + '%' }} /></div><small>Envoi de la photo {prog.n} sur {prog.of}… {Math.round(prog.p * 100)} %</small></>}
     </div>
   );
 }
@@ -67,6 +138,7 @@ export function Field({ f, v }) {
   const help = f.help && <small className="fhelp">{f.help}</small>;
   const span = <span>{f.l}{f.req ? ' *' : ''}</span>;
   if (f.t === 'image' || f.t === 'video') return <ImageField f={f} v={val} />;
+  if (f.t === 'images') return <ImagesField f={f} v={val} />;
   let el;
   if (f.t === 'textarea') el = <label className="field"><textarea name={f.k} rows={f.rows || 4} placeholder=" " required={!!f.req} defaultValue={val} />{span}</label>;
   else if (f.t === 'select') el = <label className="field field--select"><select name={f.k} required={!!f.req} defaultValue={String(val)}>{f.empty && <option value="">{f.empty}</option>}{(f.opts || []).map(([ov, ol]) => <option key={ov} value={String(ov)}>{ol}</option>)}</select>{span}</label>;
@@ -119,7 +191,7 @@ export function VideoUpload() {
     setMsg(`Envoi de ${file.name} (${(file.size / 1048576).toFixed(1)} Mo)… ne fermez pas cette fenêtre.`);
     try {
       const r = await upload(file, (p) => { setProg(p); setMsg(`Envoi… ${Math.round(p * 100)} %`); });
-      form.elements.video_type.value = 'file';
+      form.elements.video_type.value = r.remote ? 'url' : 'file'; // en ligne (Vercel Blob) : lien direct https
       form.elements.video_src.value = r.src;
       setMsg('Vidéo envoyée. Pensez à enregistrer la leçon.');
       const v = Object.assign(document.createElement('video'), { preload: 'metadata', src: URL.createObjectURL(file) });

@@ -171,6 +171,23 @@ code.big { font-size: .95rem; letter-spacing: .06em; }
 .imgf__body { display: grid; gap: 6px; flex: 1; } .imgf__body small { color: var(--muted); font-size: .78rem; }
 .prog { height: 6px; border-radius: 6px; background: var(--sand); overflow: hidden; } .prog span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
 .vidup { margin-top: 14px; display: grid; gap: 8px; } .vidup__st { color: var(--muted); }
+/* notifications WhatsApp de l'équipe */
+.notif { display: grid; gap: 12px; margin-top: 18px; padding: 16px; border-radius: 16px; background: var(--sky); border: 1px solid var(--sky-2); }
+.notif h4 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1rem; }
+.notif p { margin: 0; } .notif a { color: var(--tone-4); text-decoration: underline; }
+.notif__res { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: .88rem; }
+.notif__res li { display: flex; gap: 8px; align-items: center; } .notif__res .ok { color: var(--ok); } .notif__res .ko { color: var(--bad); }
+/* galerie de photos d'un produit */
+.imgs { display: grid; gap: 10px; padding: 14px; border-radius: 16px; border: 1px solid var(--line-2); background: #fff; }
+.imgs__head { display: grid; gap: 2px; } .imgs__head small, .imgs > small { color: var(--muted); font-size: .78rem; }
+.imgs__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.imgs__item { position: relative; margin: 0; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: var(--sand); }
+.imgs__item img { width: 100%; height: 100%; object-fit: cover; }
+.imgs__act { position: absolute; inset: auto 0 0; display: flex; justify-content: space-between; padding: 4px; background: linear-gradient(to top, rgba(14, 23, 54, .7), transparent); }
+.imgs__act button { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .92); color: var(--tone-8); }
+.imgs__act button:disabled { opacity: .35; } .imgs__act .i { width: 14px; height: 14px; }
+.imgs__add { aspect-ratio: 1; border-radius: 12px; border: 1.5px dashed var(--line-2); display: grid; place-items: center; align-content: center; gap: 4px; text-align: center; color: var(--muted); font-size: .76rem; cursor: pointer; transition: all .3s; padding: 6px; }
+.imgs__add:hover { border-color: var(--accent); color: var(--accent); background: var(--tint-1); } .imgs__add .i { width: 22px; height: 22px; }
 .upload__zone { display: flex; align-items: center; gap: 16px; padding: 18px; border-radius: 16px; border: 1.5px solid var(--line-2); cursor: pointer; transition: all .3s; background: #fff; }
 .upload__zone:hover { border-color: var(--tone-4); background: var(--tint-1); }
 .upload__zone > .i { width: 44px; height: 44px; padding: 10px; border-radius: 14px; background: var(--sand); color: var(--tone-5); flex: none; }
