@@ -46,9 +46,11 @@ export async function upload(file, onProgress, pub = false) {
   file = await shrinkImage(file);
   const storage = adm.get().opts.storage || (await loadOpts())?.storage;
   if (storage?.blob) {
-    const { upload: toBlob } = await import('@vercel/blob/client');
+    const B = await import('@vercel/blob/client');
+    const toBlob = storage.blob_mode === 'presigned' ? B.uploadPresigned : B.upload;
     const vid = file.type.startsWith('video/');
-    const b = await toBlob(`${vid ? (pub ? 'videos' : 'lecons') : 'photos'}/${safeName(file.name)}`, file, {
+    const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); // nom unique : jamais d'écrasement
+    const b = await toBlob(`${vid ? (pub ? 'videos' : 'lecons') : 'photos'}/${uid}-${safeName(file.name)}`, file, {
       access: 'public', handleUploadUrl: '/api/admin/blob', multipart: file.size > 8 * 1024 * 1024,
       onUploadProgress: ({ percentage }) => onProgress?.(percentage / 100),
     });

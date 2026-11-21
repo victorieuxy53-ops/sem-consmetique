@@ -153,7 +153,7 @@ Les deux services ont une offre gratuite et se branchent en quelques clics depui
 1. *Vercel › votre projet › **Storage** › Create Database* : choisir **Turso**, créer la base, la
    **connecter au projet**. Les variables `TURSO_DATABASE_URL` et `TURSO_AUTH_TOKEN` sont ajoutées seules.
 2. *Storage › Create › **Blob*** : créer le store et le **connecter au projet** (variable
-   `BLOB_READ_WRITE_TOKEN` ajoutée seule).
+   `BLOB_STORE_ID` ajoutée seule ; les anciens stores utilisent `BLOB_READ_WRITE_TOKEN` : les deux fonctionnent).
 3. *Settings › Environment Variables* : `ADMIN_PASSWORD` (mot de passe de l’admin ; le numéro de
    connexion est par défaut le WhatsApp principal, modifiable avec `ADMIN_PHONE`).
 4. *Deployments › … › **Redeploy***. Au premier démarrage, la base Turso reçoit le catalogue SEM.

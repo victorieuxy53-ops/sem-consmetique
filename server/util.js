@@ -182,8 +182,10 @@ async function saveDataImage(dataUrl, maxBytes = 5 * 1024 * 1024) {
   if (!ext) throw bad('Format d’image non pris en charge (JPG, PNG, WEBP).');
   const name = `${Date.now().toString(36)}-${crypto.randomBytes(5).toString('hex')}${ext}`;
   if (db.BLOB) {
-    const { put } = await import('@vercel/blob');
-    return (await put(`demandes/${name}`, buf, { access: 'public', contentType: MIME_OF[ext], addRandomSuffix: false })).url;
+    try {
+      const { put } = await import('@vercel/blob');
+      return (await put(`demandes/${name}`, buf, { access: 'public', contentType: MIME_OF[ext], addRandomSuffix: false })).url;
+    } catch (e) { console.warn('[Vercel Blob] envoi impossible, image gardée sur le serveur :', e.message); } // la demande de la cliente passe quand même
   }
   fs.writeFileSync(path.join(/* turbopackIgnore: true */ db.UPLOAD_DIR, name), buf);
   return '/uploads/' + name;

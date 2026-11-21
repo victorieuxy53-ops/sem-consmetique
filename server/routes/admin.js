@@ -298,7 +298,7 @@ get('/api/admin/options', async (ctx) => {
     users: await db.all('SELECT id, name, email FROM users ORDER BY name'),
     events: await db.all('SELECT id, title, date FROM events ORDER BY date DESC'),
     // Où partent les photos/vidéos envoyées : Vercel Blob (envoi direct depuis le navigateur) ou disque du serveur.
-    storage: { blob: db.BLOB, persistent: !db.EPHEMERAL, media_persistent: !db.MEDIA_EPHEMERAL },
+    storage: { blob: db.BLOB, blob_mode: db.BLOB_MODE, persistent: !db.EPHEMERAL, media_persistent: !db.MEDIA_EPHEMERAL },
   };
 });
 

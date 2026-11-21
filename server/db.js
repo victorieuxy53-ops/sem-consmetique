@@ -52,8 +52,11 @@ function tursoEnv() {
 const TURSO = tursoEnv();
 const REMOTE_URL = TURSO.url || '';
 export const REMOTE = /^(libsql|https?|wss?):\/\//.test(REMOTE_URL);
-/** Photos et vidéos stockées dans Vercel Blob (persistant) quand le jeton est présent. */
-export const BLOB = !!process.env.BLOB_READ_WRITE_TOKEN;
+/** Photos et vidéos stockées dans Vercel Blob (persistant). Deux façons de le connecter :
+ *  - « token » : jeton classique BLOB_READ_WRITE_TOKEN ;
+ *  - « presigned » : stockages récents, sans jeton (BLOB_STORE_ID + jeton OIDC fourni par Vercel à chaque requête). */
+export const BLOB_MODE = process.env.BLOB_READ_WRITE_TOKEN ? 'token' : process.env.BLOB_STORE_ID ? 'presigned' : null;
+export const BLOB = !!BLOB_MODE;
 const IN_TMP = DATA_DIR.startsWith(os.tmpdir());
 /** Vrai quand la base vit dans le dossier temporaire : perdue au prochain démarrage à froid. */
 export const EPHEMERAL = !REMOTE && IN_TMP;
