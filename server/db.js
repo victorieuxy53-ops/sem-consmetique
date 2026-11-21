@@ -34,8 +34,23 @@ export const DATA_DIR = (G.dir ||= dataDir());
 export const UPLOAD_DIR = path.join(/* turbopackIgnore: true */ DATA_DIR, 'uploads');
 export const VIDEO_DIR = path.join(/* turbopackIgnore: true */ DATA_DIR, 'videos');
 
-/** Base distante Turso (persistante). Variables posées automatiquement par l'intégration Vercel › Turso. */
-const REMOTE_URL = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || '';
+/**
+ * Base distante Turso (persistante). Variables posées automatiquement par l'intégration Vercel › Turso :
+ * TURSO_DATABASE_URL / TURSO_AUTH_TOKEN, éventuellement avec un préfixe choisi à la connexion
+ * (ex. STORAGE_TURSO_DATABASE_URL) : on les retrouve quel que soit le préfixe.
+ */
+function tursoEnv() {
+  const env = process.env;
+  if (env.TURSO_DATABASE_URL) return { url: env.TURSO_DATABASE_URL, token: env.TURSO_AUTH_TOKEN };
+  if (env.LIBSQL_URL) return { url: env.LIBSQL_URL, token: env.LIBSQL_AUTH_TOKEN };
+  const key = Object.keys(env).sort().find((k) => /(TURSO|LIBSQL|DATABASE)_URL$|_URL$/.test(k) && /^libsql:\/\//.test(env[k] || ''));
+  if (!key) return { url: '' };
+  const prefix = key.replace(/(TURSO_DATABASE|LIBSQL|DATABASE)?_?URL$/, '');
+  const tokenKey = Object.keys(env).sort().find((k) => k.startsWith(prefix) && /AUTH_TOKEN$|_TOKEN$/.test(k));
+  return { url: env[key], token: tokenKey ? env[tokenKey] : undefined };
+}
+const TURSO = tursoEnv();
+const REMOTE_URL = TURSO.url || '';
 export const REMOTE = /^(libsql|https?|wss?):\/\//.test(REMOTE_URL);
 /** Photos et vidéos stockées dans Vercel Blob (persistant) quand le jeton est présent. */
 export const BLOB = !!process.env.BLOB_READ_WRITE_TOKEN;
@@ -161,7 +176,7 @@ const COLUMNS = {
 
 async function init() {
   const c = REMOTE
-    ? createClient({ url: REMOTE_URL, authToken: process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || undefined })
+    ? createClient({ url: REMOTE_URL, authToken: TURSO.token || undefined })
     : createClient({ url: 'file:' + path.join(/* turbopackIgnore: true */ DATA_DIR, 'institut.sqlite').split(path.sep).join('/') });
   if (!REMOTE) {
     await retry(() => c.execute('PRAGMA busy_timeout = 10000'));
