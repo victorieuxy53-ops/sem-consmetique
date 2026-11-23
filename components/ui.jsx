@@ -403,7 +403,7 @@ export function addToCart(p, qty, btn) {
   const inCart = cartStore.get().find((i) => i.id === p.id)?.qty || 0;
   if (p.stock !== null && inCart + qty > p.stock) return toast(`Stock limité : ${p.stock} disponible(s).`, 'info');
   cart.add(p, qty);
-  flyToCart();
+  flyToCart(btn);
   btn.classList.add('added');
   setTimeout(() => btn.classList.remove('added'), 1200);
   toast(`« ${p.name} » ajouté au panier`);

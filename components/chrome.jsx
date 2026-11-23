@@ -3,7 +3,7 @@
 import { useEffect, useRef, useTransition } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { api, cart, cx, hasBulk, lockScroll, money, openStatus, phones, setNavigator, telHref, ui, unitPrice, useCart, useStore, waMain, address } from '@/lib/core';
-import { install, refresh } from '@/lib/fx';
+import { install, reduce, refresh } from '@/lib/fx';
 import { Brand, Icon, OpenDot, ProductVisual, Split, Qty, useApp } from './ui';
 
 const NAV = [['/', 'Accueil'], ['/a-propos', 'À propos'], ['/prestations', 'Prestations'], ['/boutique', 'Boutique'], ['/formations', 'Formations']];
@@ -211,7 +211,10 @@ export function FX() {
     navigating.current = false;
     const h = location.hash && document.querySelector(location.hash);
     h ? h.scrollIntoView() : scrollTo(0, 0);
-    document.getElementById('app')?.focus({ preventScroll: true });
+    const main = document.getElementById('app');
+    main?.focus({ preventScroll: true });
+    // Transition de page : la nouvelle page apparaît en fondu (l'opacité seule ne change aucune position).
+    if (!reduce()) main?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 550, easing: 'cubic-bezier(.22, 1, .36, 1)' });
   }, [pending]);
 
   // Barre de chargement : montre que le clic est pris en compte pendant que la page suivante arrive.

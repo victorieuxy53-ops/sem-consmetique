@@ -1,0 +1,114 @@
+/* =====================================================================
+   SEM Cosmétique : animations « grandes marques » (chargé en dernier)
+   Uniquement du mouvement : aucune taille ni position de mise en page ne change
+   (transform, translate, scale, opacité, découpes et halos de lumière seulement).
+   Moteur : lib/fx.js. Si la visiteuse a demandé de réduire les animations, tout
+   s'arrête (règle globale de main.css + rien n'est branché côté JavaScript).
+   ===================================================================== */
+
+/* ------------------------------------------- 1. intro de la première visite */
+/* Rideau aux couleurs de la marque, une seule fois par visite, sur l'accueil (voir app/(site)/layout.js).
+   Il ne bloque jamais la page : il est transparent aux clics et se lève tout seul, même sans JavaScript. */
+.intro { display: none; }
+.has-intro .intro {
+  position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; align-content: center; gap: 18px; pointer-events: none;
+  color: #fff; text-align: center; clip-path: inset(0 0 0 0);
+  background: radial-gradient(55% 60% at 82% 12%, rgba(214, 51, 111, .5), transparent 70%), radial-gradient(45% 55% at 8% 95%, rgba(91, 124, 214, .4), transparent 70%), var(--grad-night);
+  animation: introLift 1s var(--ease-io) 1.25s forwards;
+}
+.intro .logo-mark { width: 86px; height: 86px; color: #fff; opacity: 0; animation: introLogo 1s var(--ease) .05s forwards; }
+.intro__name { font-family: var(--ff-d); font-size: clamp(2.3rem, 7vw, 3.6rem); font-weight: 500; line-height: 1.05; margin: 0; clip-path: inset(0 0 100% 0); animation: introName 1s var(--ease) .3s forwards; }
+.intro__name em { font-style: italic; color: var(--accent-2); }
+.intro__tag { margin: 0; font-size: .72rem; letter-spacing: .32em; text-transform: uppercase; color: rgba(255, 255, 255, .7); opacity: 0; animation: introFade .8s var(--ease) .6s forwards; }
+.intro__line { position: relative; width: 150px; height: 2px; margin-top: 6px; border-radius: 2px; overflow: hidden; background: rgba(255, 255, 255, .14); }
+.intro__line::after { content: ''; position: absolute; inset: 0; background: var(--grad-rose); transform-origin: left; transform: scaleX(0); animation: introBar 1.1s var(--ease-io) .1s forwards; }
+@keyframes introLogo { from { opacity: 0; transform: scale(.55) rotate(-16deg); } to { opacity: 1; transform: none; } }
+@keyframes introName { to { clip-path: inset(-10% -5% -15% -5%); } }
+@keyframes introFade { to { opacity: 1; } }
+@keyframes introBar { to { transform: scaleX(1); } }
+@keyframes introLift { to { clip-path: inset(0 0 100% 0); visibility: hidden; } }
+/* l'accueil attend la fin du rideau pour jouer son entrée */
+.has-intro .hero { --intro: 1.45s; }
+
+/* --------------------------------------- 2. titres : mots qui montent derrière un masque */
+/* Les mots restent des éléments « en ligne » : le texte se coupe exactement aux mêmes endroits qu'avant.
+   Chaque mot part 1,5 ligne plus bas (décalage relatif, sans effet sur la mise en page) et remonte dans sa fenêtre. */
+.is-split .sw { clip-path: inset(-.3em -.4em -.2em -.4em); }
+.is-split .sc { position: relative; top: 1.5em; opacity: .001;
+  transition: top 1.2s var(--ease) calc(var(--d, 0ms) + var(--i, 0) * 65ms + var(--intro, 0s)), opacity .5s linear calc(var(--d, 0ms) + var(--i, 0) * 65ms + var(--intro, 0s)); }
+.is-split.in .sc { top: 0; opacity: 1; }
+[data-split] { opacity: 1; translate: none; } /* le masque mot à mot remplace le fondu d'ensemble */
+.hero__title .sc { transition-duration: 1.4s, .6s; transition-delay: calc(var(--i, 0) * 85ms + 120ms + var(--intro, 0s)); }
+
+/* ---------------------------------------------------------------- 3. accueil */
+/* entrée : la vidéo (ou photo) se pose avec un lent zoom arrière, puis glisse moins vite que la page */
+@keyframes kenburns { from { scale: 1.18; } to { scale: 1; } }
+.hero__media > .bgv, .hero__media > img { animation: kenburns 2.8s var(--ease) var(--intro, 0s) both; }
+.hero__media { translate: 0 var(--hero-y, 0px); }
+.hero > .container { opacity: var(--hero-o, 1); }
+.hero [data-reveal] { transition-delay: calc(var(--d, 0ms) + var(--intro, 0s)); }
+/* reflet qui attire l'œil sur le bouton principal, toutes les quelques secondes */
+.hero__cta .btn-white::before { animation: shineLoop 6.5s var(--ease) calc(2.6s + var(--intro, 0s)) infinite; }
+@keyframes shineLoop { 0% { transform: skewX(-20deg) translateX(-160%); } 16%, 100% { transform: skewX(-20deg) translateX(460%); } }
+
+/* ------------------------------------------- 4. photos : rideau qui s'ouvre + zoom arrière */
+/* Le cadre reste en place (le navigateur le « voit » et déclenche l'animation) : c'est la photo qu'il contient
+   qui se dévoile de haut en bas, par-dessus la couleur du cadre. */
+.ir > :first-child { clip-path: inset(0 0 100% 0); transition: clip-path 1.3s var(--ease-io) calc(var(--d, 0ms) + 100ms); }
+.ir.in > :first-child { clip-path: inset(0 0 0 0); }
+.ir img { scale: 1.2; transition: transform 1.2s var(--ease), scale 1.8s var(--ease) calc(var(--d, 0ms) + 100ms); }
+.ir.in img { scale: 1; }
+
+/* images chargées à la demande : fondu à l'arrivée */
+img.iw { opacity: 0; }
+img.iok { animation: imgIn .8s var(--ease) both; }
+@keyframes imgIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* --------------------------------------------------------- 5. boutons */
+/* reflet lumineux au survol + léger enfoncement au clic + attraction du curseur (fx.js) */
+.btn { transition: background .4s var(--ease), color .4s, box-shadow .4s, border-color .4s, transform .5s var(--ease), translate .6s var(--ease), scale .2s var(--ease); }
+.btn[data-reveal] { transition: opacity .8s var(--ease) var(--d, 0ms), translate .9s var(--ease) var(--d, 0ms), background .4s var(--ease), color .4s, box-shadow .4s, border-color .4s, scale .2s var(--ease); }
+.btn:active { scale: .965; }
+.btn.mag-on { translate: var(--tx, 0px) var(--ty, 0px); }
+.btn-primary::before, .btn-gold::before, .btn-white::before, .btn-wa::before {
+  content: ''; position: absolute; z-index: -1; top: -10%; bottom: -10%; left: 0; width: 38%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .42), transparent); transform: skewX(-20deg) translateX(-160%);
+}
+.btn-white::before { background: linear-gradient(100deg, transparent, rgba(214, 51, 111, .16), transparent); }
+.btn-primary:hover::before, .btn-gold:hover::before, .btn-white:hover::before, .btn-wa:hover::before { transform: skewX(-20deg) translateX(460%); transition: transform 1s var(--ease); }
+
+/* ------------------------------------- 6. cartes : halo qui suit la souris + inclinaison 3D */
+@media (hover: hover) and (pointer: fine) {
+  .uni, .star, .pcard, .ccard, .ecard, .bcard {
+    background-image: radial-gradient(480px circle at var(--mx, -999px) var(--my, -999px), rgba(214, 51, 111, .075), transparent 42%);
+  }
+  .hfact { background-image: radial-gradient(260px circle at var(--mx, -999px) var(--my, -999px), rgba(255, 255, 255, .15), transparent 60%); }
+  .stats, .diag-cta, .call-band, .ft {
+    background-image: radial-gradient(620px circle at var(--mx, -999px) var(--my, -999px), rgba(246, 166, 199, .13), transparent 45%), var(--grad-night);
+  }
+  .star, .pcard, .ccard { transition: opacity .8s var(--ease) var(--d, 0ms), translate .9s var(--ease) var(--d, 0ms), box-shadow .6s var(--ease), transform .8s var(--ease); }
+  .tilting { transform: perspective(1000px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: opacity .8s var(--ease), translate .6s var(--ease), box-shadow .6s var(--ease), transform .18s ease-out; }
+  .uni:hover .uni__ic { transform: rotate(-8deg) scale(1.08); }
+}
+
+/* ------------------------------------------------------- 7. parallaxe (grand écran) */
+.hero__show.px-on, .phero__show.px-on, .testi__q.px-on, .diag-steps.px-on { transform: translate3d(0, var(--py, 0px), 0); }
+.founder__seal.px-on { translate: 0 var(--py, 0px); }
+
+/* ------------------------------------------------- 8. bandeau défilant piloté par fx.js */
+.marquee__track.mq { animation: none; will-change: transform; }
+
+/* --------------------------------------------------- 9. pastille qui vole jusqu'au panier */
+.fly-dot { position: fixed; z-index: 1500; width: 18px; height: 18px; pointer-events: none; }
+.fly-dot i { display: block; width: 100%; height: 100%; border-radius: 50%; background: var(--grad-rose); box-shadow: 0 6px 18px rgba(214, 51, 111, .55), 0 0 0 3px rgba(255, 255, 255, .9); }
+
+/* ------------------------------------------- 10. chiffres clés : éclat doré à l'arrivée */
+.stats [data-reveal].in strong { animation: statGlow 2.4s var(--ease) calc(var(--d, 0ms) + 300ms) both; }
+@keyframes statGlow { 0% { text-shadow: 0 0 0 rgba(246, 166, 199, 0); } 40% { text-shadow: 0 0 28px rgba(246, 166, 199, .55); } 100% { text-shadow: 0 0 0 rgba(246, 166, 199, 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .has-intro .intro { display: none; }
+  .is-split .sc { top: 0 !important; opacity: 1 !important; }
+  .is-split .sw, .ir > :first-child, .ir img { clip-path: none !important; scale: none !important; }
+  .hero__media { translate: none; } .hero > .container { opacity: 1; }
+}
